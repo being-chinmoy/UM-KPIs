@@ -1,22 +1,14 @@
 // src/App.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
 import { useAuth } from './AuthContext'; // Import useAuth hook
 import { auth } from './firebaseConfig'; // Import auth instance for logout
 import { signOut } from 'firebase/auth';
 import UpdateKpiModal from './components/UpdateKpiModal';
 
 
-
-
-
 // Import components
 import Login from './components/Login';
 import Signup from './components/Signup';
-// Import the existing KPI dashboard components (you can rename/refactor them)
-// For now, let's keep them as a single file or import individual parts
-// Assuming your previous App.js content is now split into sub-components/functions
-// For simplicity, let's just put the main dashboard logic into a function here
-// In a real app, you'd create Dashboard.js component
 
 // Reusable component for displaying a single KPI card
 const KPICard = ({ kpi, onUpdateClick }) => {
@@ -125,6 +117,7 @@ const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
 
 // Main Dashboard View Component (Moved from previous App.js content)
 const DashboardView = () => {
+    const { currentUser, userToken } = useAuth(); // Assuming useAuth provides userToken
     const [kpis, setKpis] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -172,43 +165,75 @@ const DashboardView = () => {
     // Function to filter KPIs by category
     const getKpisByCategory = (category) => kpis.filter(kpi => kpi.category === category);
 
-    const fetchKpiData = async () => {
+    // Use useCallback for fetchKpiData to memoize it and prevent unnecessary re-renders
+    const fetchKpiData = useCallback(async () => {
         setLoading(true);
         setError(null);
+
+        // Ensure user and token are available before attempting to fetch
+        if (!currentUser || !userToken) {
+            console.log('User not authenticated or token not available, not fetching KPIs.');
+            setKpis(mockKPIs); // Fallback to mock data or clear if not logged in
+            setLoading(false);
+            return;
+        }
+
         try {
-            // IMPORTANT: Replace with your actual Azure Function API URL later for GetKPIs
-            const getKpiUrl = 'YOUR_AZURE_FUNCTION_GET_KPIS_API_URL/api/GetKPIs?code=YOUR_GET_KPIS_FUNCTION_KEY';
-            // For now, it will load mock data if the API URL is not set or fails
-            const response = await fetch(getKpiUrl);
+            // IMPORTANT: Replace with your actual Azure Function API URL for GetKPIs
+            // Make sure to remove '?code=YOUR_GET_KPIS_FUNCTION_KEY' as authentication is now via token
+            const getKpiUrl = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/GetKPIs';
+            
+            const response = await fetch(getKpiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${userToken}` // Send the Firebase ID token
+                }
+            });
+
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                if (response.status === 401 || response.status === 403) {
+                    setError("Authentication failed or token expired. Please try logging in again.");
+                    // Optionally, force a logout or redirect to login
+                    // signOut(auth); 
+                }
+                throw new Error(`Failed to fetch KPIs: ${errorText}`);
             }
             const data = await response.json();
             setKpis(data);
         } catch (e) {
             console.error("Failed to fetch data from backend, loading mock data:", e);
             setKpis(mockKPIs); // Fallback to mock data
-            setError("Failed to load real-time data from Azure. Displaying mock data.");
+            setError(`Failed to load real-time data from Azure: ${e.message}. Displaying mock data.`);
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentUser, userToken]); // Dependencies for useCallback
 
     // Function to handle saving updated KPI data to the backend
     const handleSaveKpi = async (kpiId, newValue, udyamMitraId) => {
+        // Ensure user and token are available before attempting to save
+        if (!currentUser || !userToken) {
+            console.error('User not authenticated or token not available, cannot save KPI.');
+            setError('Authentication required to save KPI.');
+            return false;
+        }
+
         try {
             // IMPORTANT: Replace with your actual Azure Function API URL for UpdateKpi
-            const updateKpiUrl = 'YOUR_AZURE_FUNCTION_UPDATE_KPI_API_URL/api/UpdateKpi?code=YOUR_UPDATE_KPI_FUNCTION_KEY';
+            // Make sure to remove '?code=YOUR_UPDATE_KPI_FUNCTION_KEY'
+            const updateKpiUrl = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/UpdateKpi'; 
 
             const response = await fetch(updateKpiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}` // Send the Firebase ID token
                 },
                 body: JSON.stringify({
                     kpiId: kpiId, // Renamed from 'id' to 'kpiId' for clarity in submission document
                     submittedValue: newValue, // Renamed from 'currentValue' to 'submittedValue'
-                    udyamMitraId: udyamMitraId,
+                    udyamMitraId: udyamMitraId, // This might come from currentUser.uid or a custom claim
                     submissionDate: new Date().toISOString(), // Add timestamp for submission
                     submissionMonthYear: new Date().toISOString().substring(0, 7) // e.g., "2025-06"
                 }),
@@ -216,10 +241,11 @@ const DashboardView = () => {
 
             if (!response.ok) {
                 const errorBody = await response.json().catch(() => ({ message: "Unknown error" }));
+                console.error(`HTTP error! Status: ${response.status}. Details: ${errorBody.message || response.statusText}`);
                 throw new Error(`HTTP error! Status: ${response.status}. Details: ${errorBody.message || response.statusText}`);
             }
 
-            // const result = await response.json();
+            // const result = await response.json(); // Uncomment if your UpdateKpi returns a body
             // console.log('Submission recorded successfully:', result);
 
             // Re-fetch all KPIs to update the dashboard immediately after submission
@@ -233,9 +259,10 @@ const DashboardView = () => {
         }
     };
 
+    // useEffect to call fetchKpiData when the component mounts or fetchKpiData changes
     useEffect(() => {
-  fetchKpiData();
-}, [fetchKpiData]);
+        fetchKpiData();
+    }, [fetchKpiData]); // fetchKpiData is now a stable dependency due to useCallback
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
@@ -272,39 +299,39 @@ const DashboardView = () => {
 
 // Main App Component (Handles Auth and Routes)
 function App() {
-  const { currentUser, loading } = useAuth(); // Get auth state from context
-  const [showSignup, setShowSignup] = useState(false); // To toggle between login/signup
+    const { currentUser, loading } = useAuth(); // Get auth state from context
+    const [showSignup, setShowSignup] = useState(false); // To toggle between login/signup
 
-  // If still loading auth state, show a loading message
-  if (loading) {
+    // If still loading auth state, show a loading message
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100 text-blue-600 text-xl">
+                Loading authentication...
+            </div>
+        );
+    }
+
+    // If no user is logged in, show Login/Signup
+    if (!currentUser) {
+        return showSignup ? (
+            <Signup onSignupSuccess={() => setShowSignup(false)} onSwitchToLogin={() => setShowSignup(false)} />
+        ) : (
+            <Login onLoginSuccess={() => setShowSignup(false)} onSwitchToSignup={() => setShowSignup(true)} />
+        );
+    }
+
+    // If user is logged in, show the main dashboard
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 text-blue-600 text-xl">
-        Loading authentication...
-      </div>
+        <div className="relative">
+            <button
+                onClick={() => signOut(auth)}
+                className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 z-10"
+            >
+                Logout ({currentUser.email})
+            </button>
+            <DashboardView /> {/* Render the main dashboard content */}
+        </div>
     );
-  }
-
-  // If no user is logged in, show Login/Signup
-  if (!currentUser) {
-    return showSignup ? (
-      <Signup onSignupSuccess={() => setShowSignup(false)} onSwitchToLogin={() => setShowSignup(false)} />
-    ) : (
-      <Login onLoginSuccess={() => setShowSignup(false)} onSwitchToSignup={() => setShowSignup(true)} />
-    );
-  }
-
-  // If user is logged in, show the main dashboard
-  return (
-    <div className="relative">
-      <button
-        onClick={() => signOut(auth)}
-        className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 z-10"
-      >
-        Logout ({currentUser.email})
-      </button>
-      <DashboardView /> {/* Render the main dashboard content */}
-    </div>
-  );
 }
 
 export default App;
