@@ -233,10 +233,9 @@ const DashboardView = () => {
         }
     };
 
-
     useEffect(() => {
-        fetchKpiData();
-    }, []); // Fetch data on component mount
+  fetchKpiData();
+}, [fetchKpiData]);
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
