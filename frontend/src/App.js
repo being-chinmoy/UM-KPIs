@@ -1,0 +1,311 @@
+// src/App.js
+import React, { useState, useEffect } from 'react';
+import { useAuth } from './AuthContext'; // Import useAuth hook
+import { auth } from './firebaseConfig'; // Import auth instance for logout
+import { signOut } from 'firebase/auth';
+import UpdateKpiModal from './components/UpdateKpiModal';
+
+
+
+
+
+// Import components
+import Login from './components/Login';
+import Signup from './components/Signup';
+// Import the existing KPI dashboard components (you can rename/refactor them)
+// For now, let's keep them as a single file or import individual parts
+// Assuming your previous App.js content is now split into sub-components/functions
+// For simplicity, let's just put the main dashboard logic into a function here
+// In a real app, you'd create Dashboard.js component
+
+// Reusable component for displaying a single KPI card
+const KPICard = ({ kpi, onUpdateClick }) => {
+    // Calculate progress percentage, handling non-numeric targets/values
+    const progressPercentage = typeof kpi.monthlyTarget === 'number' && typeof kpi.currentValue === 'number'
+        ? Math.min(100, (kpi.currentValue / kpi.monthlyTarget) * 100).toFixed(0)
+        : null;
+
+    // Determine progress bar color based on percentage
+    let progressBarColor = 'bg-gray-300';
+    if (progressPercentage !== null) {
+        if (progressPercentage >= 100) {
+            progressBarColor = 'bg-green-500';
+        } else if (progressPercentage >= 75) {
+            progressBarColor = 'bg-yellow-500';
+        } else {
+            progressBarColor = 'bg-red-500';
+        }
+    }
+
+    return (
+        <div className="bg-white rounded-lg shadow-md p-6 border-b-4 border-blue-500 hover:shadow-lg transition-shadow duration-300 flex flex-col justify-between">
+            <div>
+                <h3 className="text-xl font-semibold text-blue-700 mb-2">{kpi.kpiName}</h3>
+                {kpi.description && (
+                    <p className="text-gray-600 text-sm mb-3">{kpi.description}</p>
+                )}
+                <div className="flex justify-between items-center mb-2">
+                    <p className="text-gray-700 font-medium">Target: <span className="font-bold">{kpi.monthlyTarget}</span></p>
+                    <p className="text-gray-700 font-medium">Achieved: <span className="font-bold">{kpi.currentValue}</span></p>
+                </div>
+
+                {progressPercentage !== null && (
+                    <>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                            <div
+                                className={`h-2.5 rounded-full ${progressBarColor}`}
+                                style={{ width: `${progressPercentage}%` }}
+                            ></div>
+                        </div>
+                        <p className="text-right text-sm text-gray-500 mt-1">{progressPercentage}% Achieved</p>
+                    </>
+                )}
+
+                <p className="text-gray-500 text-xs mt-3">Reporting: {kpi.reportingFormat}</p>
+            </div>
+            <button
+                onClick={() => onUpdateClick(kpi)}
+                className="mt-4 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300"
+            >
+                Update KPI
+            </button>
+        </div>
+    );
+};
+
+// Component to display a section of KPIs (non-collapsible for the main section)
+const KPISection = ({ title, kpis, onUpdateClick }) => {
+    return (
+        <section className="mb-10 p-6 bg-white rounded-lg shadow-xl max-w-7xl mx-auto">
+            <h2 className="text-3xl font-bold text-blue-800 mb-6 border-b-2 border-blue-200 pb-3">{title}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {kpis.map(kpi => (
+                    <KPICard key={kpi.id} kpi={kpi} onUpdateClick={onUpdateClick} />
+                ))}
+            </div>
+        </section>
+    );
+};
+
+// Component for collapsible KPI sections
+const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        <section className="mb-10 p-6 bg-white rounded-lg shadow-xl max-w-7xl mx-auto">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex justify-between items-center w-full text-left text-2xl font-bold text-blue-800 mb-4 pb-3 border-b-2 border-blue-200 focus:outline-none"
+            >
+                <span>{title}</span>
+                {/* Icon for collapse/expand */}
+                <span className="text-blue-500 transition-transform duration-300 transform">
+                    {isOpen ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    )}
+                </span>
+            </button>
+            {isOpen && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4 transition-all duration-500 ease-in-out">
+                    {kpis.map(kpi => (
+                        <KPICard key={kpi.id} kpi={kpi} onUpdateClick={onUpdateClick} />
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+};
+
+
+// Main Dashboard View Component (Moved from previous App.js content)
+const DashboardView = () => {
+    const [kpis, setKpis] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [showModal, setShowModal] = useState(false);
+    const [selectedKpi, setSelectedKpi] = useState(null);
+
+    // Mock KPI data (to be replaced by real data from Azure backend)
+    const mockKPIs = [
+      { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
+      { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "common" },
+      { id: 'common3', kpiName: "Baseline Surveys or Field Assessments", description: "Surveys conducted for ground mapping", monthlyTarget: 4, currentValue: Math.min(4, Math.floor(Math.random() * 5) + 2), reportingFormat: "Google Sheet", category: "common" },
+      { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Application copies/Screenshot of status", category: "common" },
+      { id: 'common5', kpiName: "Follow-ups on Scheme Applications", description: "Tracking and facilitating pending cases", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Tracking Sheet with outcome status", category: "common" },
+      { id: 'common6', kpiName: "Workshops / EDP Organized", description: "Mobilization, awareness events", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Attendance sheets, photos, videos", category: "common" },
+      { id: 'common7', kpiName: "Financial Literacy or Formalization Support", description: "1-to-1 guidance on PAN, GST, Udyam, New Industrial Policy, etc.", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Documentation list, Google Sheet", category: "common" },
+      { id: 'common8', kpiName: "New Enterprise Cases Identified", description: "New informal businesses identified and profiled", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Enterprise profiling Google Sheet", category: "common" },
+      { id: 'common9', kpiName: "Credit Linkage Facilitation", description: "Referrals to banks, NBFCs", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Bank interaction/follow-up record/ google sheet", category: "common" },
+      { id: 'common10', kpiName: "Portal/MIS Updates & Data Entry", description: "Timely data updates in MIS/Google Sheets", monthlyTarget: 100, currentValue: Math.min(100, Math.floor(Math.random() * 105) + 90), reportingFormat: "MIS Portal/Google Sheet", category: "common" },
+      { id: 'common11', kpiName: "Convergence & Departmental Coordination", description: "Meetings with DICs, RD, Agri/Horti, etc.", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Meeting MoM or signed attendance list", category: "common" },
+      { id: 'common12', kpiName: "Support to EDPs, RAMP, and Field Activities", description: "Participation in Enterprise Development Programs or RAMP", monthlyTarget: 'As per deployment', currentValue: 'Met', reportingFormat: "Program report signed by supervisor", category: "common" },
+      { id: 'common13', kpiName: "Case Studies / Beneficiary Success Stories", description: "Documenting success stories from the field", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Minimum 500 words + image/video", category: "common" },
+      { id: 'common14', kpiName: "Pollution/Pollutant Check", description: "Visit to Industrial Estate, and do proper reading of machine for pollution/pollutant", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Google sheet with geo tagged photos", category: "common" },
+
+      { id: 'eco1', kpiName: "Loan Applications Supported", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "ecosystem" },
+      { id: 'eco2', kpiName: "Business Model/Plan Guidance Provided", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "ecosystem" },
+      { id: 'eco3', kpiName: "Artisans/Entrepreneurs Linked to Schemes", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "ecosystem" },
+      { id: 'eco4', kpiName: "Financial Literacy Sessions (Group) Conducted", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Photos/Videos/Google Sheet", category: "ecosystem" },
+      { id: 'eco5', kpiName: "New Initiatives in Entrepreneurship Promotion", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Report/Google Sheet", category: "ecosystem" },
+      { id: 'eco6', kpiName: "Enterprise/Business Ideas Scouted", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Report/Google Sheet", category: "ecosystem" },
+
+      { id: 'hosp1', kpiName: "Tourism Potential Sites Documented or Supported", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
+      { id: 'hosp2', kpiName: "Tourism Promotion Events / Community Engagements", monthlyTarget: 4, currentValue: Math.min(4, Math.floor(Math.random() * 5) + 2), reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
+      { id: 'hosp3', kpiName: "Homestays/Tour Operators Onboarded/Assisted", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "hospitality" },
+      { id: 'hosp4', kpiName: "Local Youth/SHGs Trained in Tourism/Hospitality Services", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "hospitality" },
+
+      { id: 'agri1', kpiName: "Agri/Forest-Based Enterprises Supported", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "agriForest" },
+      { id: 'agri2', kpiName: "SHGs Linked to Agri/Animal Husbandry/Processing Units", monthlyTarget: 3, currentValue: Math.min(3, Math.floor(Math.random() * 4) + 1), reportingFormat: "Google Sheet", category: "agriForest" },
+
+      { id: 'dbms1', kpiName: "Portal/MIS Data Entry & Monitoring", monthlyTarget: 100, currentValue: Math.min(100, Math.floor(Math.random() * 105) + 90), reportingFormat: "Google Sheet, MIS Portal", category: "dbmsMIS" },
+      { id: 'dbms2', kpiName: "Data Validation, Error Rectification, and Reporting", monthlyTarget: 'Monthly Review', currentValue: 'Completed', reportingFormat: "Issue logs, rectification reports via email", category: "dbmsMIS" },
+      { id: 'dbms3', kpiName: "Collaboration with Line Departments and Portal Developers", monthlyTarget: 'Continuous', currentValue: 'Ongoing', reportingFormat: "Meeting Notes, Email Records", category: "dbmsMIS" },
+    ];
+
+
+    // Function to filter KPIs by category
+    const getKpisByCategory = (category) => kpis.filter(kpi => kpi.category === category);
+
+    const fetchKpiData = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            // IMPORTANT: Replace with your actual Azure Function API URL later for GetKPIs
+            const getKpiUrl = 'YOUR_AZURE_FUNCTION_GET_KPIS_API_URL/api/GetKPIs?code=YOUR_GET_KPIS_FUNCTION_KEY';
+            // For now, it will load mock data if the API URL is not set or fails
+            const response = await fetch(getKpiUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            setKpis(data);
+        } catch (e) {
+            console.error("Failed to fetch data from backend, loading mock data:", e);
+            setKpis(mockKPIs); // Fallback to mock data
+            setError("Failed to load real-time data from Azure. Displaying mock data.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Function to handle saving updated KPI data to the backend
+    const handleSaveKpi = async (kpiId, newValue, udyamMitraId) => {
+        try {
+            // IMPORTANT: Replace with your actual Azure Function API URL for UpdateKpi
+            const updateKpiUrl = 'YOUR_AZURE_FUNCTION_UPDATE_KPI_API_URL/api/UpdateKpi?code=YOUR_UPDATE_KPI_FUNCTION_KEY';
+
+            const response = await fetch(updateKpiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    kpiId: kpiId, // Renamed from 'id' to 'kpiId' for clarity in submission document
+                    submittedValue: newValue, // Renamed from 'currentValue' to 'submittedValue'
+                    udyamMitraId: udyamMitraId,
+                    submissionDate: new Date().toISOString(), // Add timestamp for submission
+                    submissionMonthYear: new Date().toISOString().substring(0, 7) // e.g., "2025-06"
+                }),
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({ message: "Unknown error" }));
+                throw new Error(`HTTP error! Status: ${response.status}. Details: ${errorBody.message || response.statusText}`);
+            }
+
+            // const result = await response.json();
+            // console.log('Submission recorded successfully:', result);
+
+            // Re-fetch all KPIs to update the dashboard immediately after submission
+            await fetchKpiData(); // This will refresh the dashboard with potentially updated current values
+            return true; // Indicate success
+
+        } catch (e) {
+            console.error("Error submitting KPI update:", e);
+            setError(`Failed to submit KPI update: ${e.message}`);
+            throw e; // Re-throw to be caught by the modal
+        }
+    };
+
+
+    useEffect(() => {
+        fetchKpiData();
+    }, []); // Fetch data on component mount
+
+    return (
+        <div className="min-h-screen bg-gray-100 p-4">
+            <header className="mb-8 text-center">
+                <h1 className="text-4xl font-extrabold text-blue-800 tracking-tight">Udyam Mitra KPI Dashboard</h1>
+                <p className="text-xl text-gray-600 mt-2">Tracking Key Performance Indicators for Udyam Mitras</p>
+                {error && <p className="text-red-500 mt-2">{error}</p>}
+            </header>
+
+            {loading ? (
+                <div className="text-center text-lg mt-10 text-blue-600">Loading KPI data...</div>
+            ) : (
+                <>
+                    <KPISection title="Applicable to All Udyam Mitras" kpis={getKpisByCategory('common')} onUpdateClick={(kpi) => { setSelectedKpi(kpi); setShowModal(true); }} />
+                    <CollapsibleKPISection title="Udyam Mitra – Ecosystem and Enterprise Development (RM/UM/ArP-A)" kpis={getKpisByCategory('ecosystem')} onUpdateClick={(kpi) => { setSelectedKpi(kpi); setShowModal(true); }} />
+                    <CollapsibleKPISection title="Udyam Mitra – Hospitality and Tourism Sector (RM/UM/ArP-B)" kpis={getKpisByCategory('hospitality')} onUpdateClick={(kpi) => { setSelectedKpi(kpi); setShowModal(true); }} />
+                    <CollapsibleKPISection title="Udyam Mitra – Agri industries, Forest based industries, Animal Husbandry Sector (RM/UM/ArP-C)" kpis={getKpisByCategory('agriForest')} onUpdateClick={(kpi) => { setSelectedKpi(kpi); setShowModal(true); }} />
+                    <CollapsibleKPISection title="Udyam Mitra – DBMS, MIS, Enterprise Portal Synergies (RM/UM/ArP-D)" kpis={getKpisByCategory('dbmsMIS')} onUpdateClick={(kpi) => { setSelectedKpi(kpi); setShowModal(true); }} />
+                </>
+            )}
+
+            {/* Render the modal if showModal is true and a KPI is selected */}
+            {showModal && selectedKpi && (
+                <UpdateKpiModal
+                    kpi={selectedKpi}
+                    onClose={() => setShowModal(false)}
+                    onSave={handleSaveKpi}
+                />
+            )}
+        </div>
+    );
+};
+
+
+// Main App Component (Handles Auth and Routes)
+function App() {
+  const { currentUser, loading } = useAuth(); // Get auth state from context
+  const [showSignup, setShowSignup] = useState(false); // To toggle between login/signup
+
+  // If still loading auth state, show a loading message
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 text-blue-600 text-xl">
+        Loading authentication...
+      </div>
+    );
+  }
+
+  // If no user is logged in, show Login/Signup
+  if (!currentUser) {
+    return showSignup ? (
+      <Signup onSignupSuccess={() => setShowSignup(false)} onSwitchToLogin={() => setShowSignup(false)} />
+    ) : (
+      <Login onLoginSuccess={() => setShowSignup(false)} onSwitchToSignup={() => setShowSignup(true)} />
+    );
+  }
+
+  // If user is logged in, show the main dashboard
+  return (
+    <div className="relative">
+      <button
+        onClick={() => signOut(auth)}
+        className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 z-10"
+      >
+        Logout ({currentUser.email})
+      </button>
+      <DashboardView /> {/* Render the main dashboard content */}
+    </div>
+  );
+}
+
+export default App;
