@@ -1,86 +1,98 @@
-// GetKPIs/index.js
+const { app } = require('@azure/functions');
+const admin = require('firebase-admin');
 const { CosmosClient } = require('@azure/cosmos');
 
-module.exports = async function (context, req) {
-    context.log('HTTP trigger function processed a request for GetKPIs.');
-
-    // Ensure these environment variables are set in local.settings.json and Azure Function App settings
-    const cosmosDbConnection = process.env.CosmosDbConnection;
-    const databaseId = 'KpiDb'; // Ensure this matches your Cosmos DB database ID
-    const containerId = 'KPISubmissions'; // Ensure this matches your Cosmos DB container ID
-
-    if (!cosmosDbConnection) {
-        context.log.error("CosmosDbConnection environment variable not set.");
-        context.res = {
-            status: 500,
-            body: "Cosmos DB connection string is missing from environment variables."
-        };
-        return;
+// Initialize Firebase Admin SDK (ensure this is done once)
+// Use the FIREBASE_ADMIN_SDK_CONFIG environment variable
+// which should contain your Firebase service account key JSON.
+// Example: process.env.FIREBASE_ADMIN_SDK_CONFIG = '{ "type": "service_account", ... }'
+try {
+    if (!admin.apps.length) {
+        const serviceAccountConfig = JSON.parse(process.env.FIREBASE_ADMIN_SDK_CONFIG);
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccountConfig),
+            // You might need to add a databaseURL or storageBucket if using other Firebase services
+            // databaseURL: "https://<YOUR_PROJECT_ID>.firebaseio.com"
+        });
     }
+} catch (error) {
+    console.error("Firebase Admin SDK initialization failed:", error);
+    // Depending on your deployment, you might want to throw an error or handle it differently
+    // For local development, ensure FIREBASE_ADMIN_SDK_CONFIG is correctly set
+}
 
-    const endpoint = cosmosDbConnection.split('AccountEndpoint=')[1].split(';')[0];
-    const key = cosmosDbConnection.split('AccountKey=')[1].split(';')[0];
+// Cosmos DB Client setup
+const cosmosDbConnection = process.env.CosmosDbConnection;
+const databaseId = "KpiDb"; // Your database ID
+const containerId = "KPISubmissions"; // Your container ID for KPIs
 
-    const client = new CosmosClient({ endpoint, key });
-    const database = client.database(databaseId);
-    const container = database.container(containerId);
+// Ensure CosmosDbConnection is set
+if (!cosmosDbConnection) {
+    console.error("CosmosDbConnection environment variable is not set.");
+    // In a production environment, you might want to return an error immediately
+}
 
-    // Mock KPI data (same as in your React frontend for consistency)
-    // This will be returned if no data is found in Cosmos DB or if there's an error.
-    const mockKPIs = [
-        { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, currentValue: 0, reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
-        { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, currentValue: 0, reportingFormat: "Google Sheet", category: "common" },
-        { id: 'common3', kpiName: "Baseline Surveys or Field Assessments", description: "Surveys conducted for ground mapping", monthlyTarget: 4, currentValue: 0, reportingFormat: "Google Sheet", category: "common" },
-        { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, currentValue: 0, reportingFormat: "Application copies/Screenshot of status", category: "common" },
-        { id: 'common5', kpiName: "Follow-ups on Scheme Applications", description: "Tracking and facilitating pending cases", monthlyTarget: 5, currentValue: 0, reportingFormat: "Tracking Sheet with outcome status", category: "common" },
-        { id: 'common6', kpiName: "Workshops / EDP Organized", description: "Mobilization, awareness events", monthlyTarget: 2, currentValue: 0, reportingFormat: "Attendance sheets, photos, videos", category: "common" },
-        { id: 'common7', kpiName: "Financial Literacy or Formalization Support", description: "1-to-1 guidance on PAN, GST, Udyam, New Industrial Policy, etc.", monthlyTarget: 10, currentValue: 0, reportingFormat: "Documentation list, Google Sheet", category: "common" },
-        { id: 'common8', kpiName: "New Enterprise Cases Identified", description: "New informal businesses identified and profiled", monthlyTarget: 5, currentValue: 0, reportingFormat: "Enterprise profiling Google Sheet", category: "common" },
-        { id: 'common9', kpiName: "Credit Linkage Facilitation", description: "Referrals to banks, NBFCs", monthlyTarget: 5, currentValue: 0, reportingFormat: "Bank interaction/follow-up record/ google sheet", category: "common" },
-        { id: 'common10', kpiName: "Portal/MIS Updates & Data Entry", description: "Timely data updates in MIS/Google Sheets", monthlyTarget: 100, currentValue: 0, reportingFormat: "MIS Portal/Google Sheet", category: "common" },
-        { id: 'common11', kpiName: "Convergence & Departmental Coordination", description: "Meetings with DICs, RD, Agri/Horti, etc.", monthlyTarget: 2, currentValue: 0, reportingFormat: "Meeting MoM or signed attendance list", category: "common" },
-        { id: 'common12', kpiName: "Support to EDPs, RAMP, and Field Activities", description: "Participation in Enterprise Development Programs or RAMP", monthlyTarget: 'As per deployment', currentValue: 'Met', reportingFormat: "Program report signed by supervisor", category: "common" },
-        { id: 'common13', kpiName: "Case Studies / Beneficiary Success Stories", description: "Documenting success stories from the field", monthlyTarget: 1, currentValue: 0, reportingFormat: "Minimum 500 words + image/video", category: "common" },
-        { id: 'common14', kpiName: "Pollution/Pollutant Check", description: "Visit to Industrial Estate, and do proper reading of machine for pollution/pollutant", monthlyTarget: 2, currentValue: 0, reportingFormat: "Google sheet with geo tagged photos", category: "common" },
-        { id: 'eco1', kpiName: "Loan Applications Supported", monthlyTarget: 5, currentValue: 0, reportingFormat: "Google Sheet", category: "ecosystem" },
-        { id: 'eco2', kpiName: "Business Model/Plan Guidance Provided", monthlyTarget: 5, currentValue: 0, reportingFormat: "Google Sheet", category: "ecosystem" },
-        { id: 'eco3', kpiName: "Artisans/Entrepreneurs Linked to Schemes", monthlyTarget: 10, currentValue: 0, reportingFormat: "Google Sheet", category: "ecosystem" },
-        { id: 'eco4', kpiName: "Financial Literacy Sessions (Group) Conducted", monthlyTarget: 5, currentValue: 0, reportingFormat: "Photos/Videos/Google Sheet", category: "ecosystem" },
-        { id: 'eco5', kpiName: "New Initiatives in Entrepreneurship Promotion", monthlyTarget: 1, currentValue: 0, reportingFormat: "Report/Google Sheet", category: "ecosystem" },
-        { id: 'eco6', kpiName: "Enterprise/Business Ideas Scouted", monthlyTarget: 1, currentValue: 0, reportingFormat: "Report/Google Sheet", category: "ecosystem" },
-        { id: 'hosp1', kpiName: "Tourism Potential Sites Documented or Supported", monthlyTarget: 2, currentValue: 0, reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
-        { id: 'hosp2', kpiName: "Tourism Promotion Events / Community Engagements", monthlyTarget: 4, currentValue: 0, reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
-        { id: 'hosp3', kpiName: "Homestays/Tour Operators Onboarded/Assisted", monthlyTarget: 5, currentValue: 0, reportingFormat: "Google Sheet", category: "hospitality" },
-        { id: 'hosp4', kpiName: "Local Youth/SHGs Trained in Tourism/Hospitality Services", monthlyTarget: 10, currentValue: 0, reportingFormat: "Google Sheet", category: "hospitality" },
-        { id: 'agri1', kpiName: "Agri/Forest-Based Enterprises Supported", monthlyTarget: 5, currentValue: 0, reportingFormat: "Google Sheet", category: "agriForest" },
-        { id: 'agri2', kpiName: "SHGs Linked to Agri/Animal Husbandry/Processing Units", monthlyTarget: 3, currentValue: 0, reportingFormat: "Google Sheet", category: "agriForest" },
-        { id: 'dbms1', kpiName: "Portal/MIS Data Entry & Monitoring", monthlyTarget: 100, currentValue: 0, reportingFormat: "Google Sheet, MIS Portal", category: "dbmsMIS" },
-        { id: 'dbms2', kpiName: "Data Validation, Error Rectification, and Reporting", monthlyTarget: 'Monthly Review', currentValue: 'Completed', reportingFormat: "Issue logs, rectification reports via email", category: "dbmsMIS" },
-        { id: 'dbms3', kpiName: "Collaboration with Line Departments and Portal Developers", monthlyTarget: 'Continuous', currentValue: 'Ongoing', reportingFormat: "Meeting Notes, Email Records", category: "dbmsMIS" },
-    ];
+const client = new CosmosClient(cosmosDbConnection);
+const database = client.database(databaseId);
+const container = database.container(containerId);
 
 
-    try {
-        const { resources: items } = await container.items.query('SELECT * FROM c').fetchAll();
+app.http('GetKPIs', {
+    methods: ['GET'],
+    authLevel: 'anonymous', // Authentication handled in code
+    handler: async (request, context) => {
+        context.log('HTTP trigger function processed a request: GetKPIs.');
 
-        if (items.length === 0) {
-            context.log("No existing KPI data found in Cosmos DB. Returning mock data as initial set.");
-            context.res = {
-                status: 200,
-                body: mockKPIs
-            };
-        } else {
-            context.res = {
-                status: 200,
-                body: items
+        const authHeader = request.headers.get('authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            context.log('No authorization header or invalid format.');
+            return {
+                status: 401,
+                body: 'Unauthorized: No token provided or invalid format.'
             };
         }
 
-    } catch (error) {
-        context.log.error('Error fetching KPIs from Cosmos DB:', error);
-        context.res = {
-            status: 500,
-            body: mockKPIs
-        };
+        const idToken = authHeader.split('Bearer ')[1];
+
+        try {
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            context.log('Firebase ID token successfully verified.');
+
+            const uid = decodedToken.uid;
+            // You can optionally check for custom claims here if you have them, e.g., for roles
+            // const userRole = decodedToken.role;
+
+            // Fetch KPIs from Cosmos DB
+            const querySpec = {
+                query: "SELECT * FROM c WHERE c.userId = @userId", // Assuming KPIs are tied to a userId
+                parameters: [
+                    { name: "@userId", value: uid }
+                ]
+            };
+
+            const { resources: kpis } = await container.items
+                .query(querySpec)
+                .fetchAll();
+
+            context.log(`Found ${kpis.length} KPIs for user ${uid}.`);
+
+            return {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(kpis)
+            };
+
+        } catch (error) {
+            context.error('Error verifying Firebase ID token or fetching KPIs:', error);
+            if (error.code === 'auth/id-token-expired') {
+                return { status: 401, body: 'Unauthorized: Token expired.' };
+            }
+            return {
+                status: 403, // Forbidden for invalid token or other issues
+                body: `Forbidden: Invalid token or backend error. Details: ${error.message}`
+            };
+        }
     }
-};
+});
