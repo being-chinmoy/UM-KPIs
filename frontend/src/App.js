@@ -211,7 +211,7 @@ const DashboardView = () => {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, userToken, mockKPIs]); // Added mockKPIs as a dependency
+    }, [currentUser, userToken]); // REMOVED mockKPIs as a dependency here
 
     // Function to handle saving updated KPI data to the backend
     const handleSaveKpi = async (kpiId, newValue, udyamMitraId) => {
