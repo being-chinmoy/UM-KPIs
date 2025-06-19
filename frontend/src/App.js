@@ -184,7 +184,7 @@ const DashboardView = () => {
         try {
             // IMPORTANT: Replace with your actual Azure Function API URL for GetKPIs
             // Make sure to remove '?code=YOUR_GET_KPIS_FUNCTION_KEY' as authentication is now via token
-            const getKpiUrl = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/GetKPIs';
+            const getKpiUrl = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api/GetKPIs';
             
             const response = await fetch(getKpiUrl, {
                 headers: {
@@ -225,7 +225,7 @@ const DashboardView = () => {
         try {
             // IMPORTANT: Replace with your actual Azure Function API URL for UpdateKpi
             // Make sure to remove '?code=YOUR_UPDATE_KPI_FUNCTION_KEY'
-            const updateKpiUrl = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/UpdateKpi'; 
+            const updateKpiUrl = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api/UpdateKpiSubmission'; 
 
             const response = await fetch(updateKpiUrl, {
                 method: 'POST',
