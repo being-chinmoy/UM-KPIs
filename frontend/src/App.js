@@ -1,5 +1,5 @@
 // src/App.js
-import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext'; // Import useAuth hook
 import { auth } from './firebaseConfig'; // Import auth instance for logout
 import { signOut } from 'firebase/auth';
@@ -9,6 +9,46 @@ import UpdateKpiModal from './components/UpdateKpiModal';
 // Import components
 import Login from './components/Login';
 import Signup from './components/Signup';
+
+// --- START: Moved mockKPIs outside the component for stability ---
+// Mock KPI data (to be replaced by real data from Azure backend)
+const mockKPIs = [
+  { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
+  { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "common" },
+  { id: 'common3', kpiName: "Baseline Surveys or Field Assessments", description: "Surveys conducted for ground mapping", monthlyTarget: 4, currentValue: Math.min(4, Math.floor(Math.random() * 5) + 2), reportingFormat: "Google Sheet", category: "common" },
+  { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Application copies/Screenshot of status", category: "common" },
+  { id: 'common5', kpiName: "Follow-ups on Scheme Applications", description: "Tracking and facilitating pending cases", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Tracking Sheet with outcome status", category: "common" },
+  { id: 'common6', kpiName: "Workshops / EDP Organized", description: "Mobilization, awareness events", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Attendance sheets, photos, videos", category: "common" },
+  { id: 'common7', kpiName: "Financial Literacy or Formalization Support", description: "1-to-1 guidance on PAN, GST, Udyam, New Industrial Policy, etc.", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Documentation list, Google Sheet", category: "common" },
+  { id: 'common8', kpiName: "New Enterprise Cases Identified", description: "New informal businesses identified and profiled", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Enterprise profiling Google Sheet", category: "common" },
+  { id: 'common9', kpiName: "Credit Linkage Facilitation", description: "Referrals to banks, NBFCs", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Bank interaction/follow-up record/ google sheet", category: "common" },
+  { id: 'common10', kpiName: "Portal/MIS Updates & Data Entry", description: "Timely data updates in MIS/Google Sheets", monthlyTarget: 100, currentValue: Math.min(100, Math.floor(Math.random() * 105) + 90), reportingFormat: "MIS Portal/Google Sheet", category: "common" },
+  { id: 'common11', kpiName: "Convergence & Departmental Coordination", description: "Meetings with DICs, RD, Agri/Horti, etc.", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Meeting MoM or signed attendance list", category: "common" },
+  { id: 'common12', kpiName: "Support to EDPs, RAMP, and Field Activities", description: "Participation in Enterprise Development Programs or RAMP", monthlyTarget: 'As per deployment', currentValue: 'Met', reportingFormat: "Program report signed by supervisor", category: "common" },
+  { id: 'common13', kpiName: "Case Studies / Beneficiary Success Stories", description: "Documenting success stories from the field", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Minimum 500 words + image/video", category: "common" },
+  { id: 'common14', kpiName: "Pollution/Pollutant Check", description: "Visit to Industrial Estate, and do proper reading of machine for pollution/pollutant", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Google sheet with geo tagged photos", category: "common" },
+
+  { id: 'eco1', kpiName: "Loan Applications Supported", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "ecosystem" },
+  { id: 'eco2', kpiName: "Business Model/Plan Guidance Provided", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "ecosystem" },
+  { id: 'eco3', kpiName: "Artisans/Entrepreneurs Linked to Schemes", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "ecosystem" },
+  { id: 'eco4', kpiName: "Financial Literacy Sessions (Group) Conducted", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Photos/Videos/Google Sheet", category: "ecosystem" },
+  { id: 'eco5', kpiName: "New Initiatives in Entrepreneurship Promotion", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Report/Google Sheet", category: "ecosystem" },
+  { id: 'eco6', kpiName: "Enterprise/Business Ideas Scouted", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Report/Google Sheet", category: "ecosystem" },
+
+  { id: 'hosp1', kpiName: "Tourism Potential Sites Documented or Supported", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
+  { id: 'hosp2', kpiName: "Tourism Promotion Events / Community Engagements", monthlyTarget: 4, currentValue: Math.min(4, Math.floor(Math.random() * 5) + 2), reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
+  { id: 'hosp3', kpiName: "Homestays/Tour Operators Onboarded/Assisted", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "hospitality" },
+  { id: 'hosp4', kpiName: "Local Youth/SHGs Trained in Tourism/Hospitality Services", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "hospitality" },
+
+  { id: 'agri1', kpiName: "Agri/Forest-Based Enterprises Supported", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "agriForest" },
+  { id: 'agri2', kpiName: "SHGs Linked to Agri/Animal Husbandry/Processing Units", monthlyTarget: 3, currentValue: Math.min(3, Math.floor(Math.random() * 4) + 1), reportingFormat: "Google Sheet", category: "agriForest" },
+
+  { id: 'dbms1', kpiName: "Portal/MIS Data Entry & Monitoring", monthlyTarget: 100, currentValue: Math.min(100, Math.floor(Math.random() * 105) + 90), reportingFormat: "Google Sheet, MIS Portal", category: "dbmsMIS" },
+  { id: 'dbms2', kpiName: "Data Validation, Error Rectification, and Reporting", monthlyTarget: 'Monthly Review', currentValue: 'Completed', reportingFormat: "Issue logs, rectification reports via email", category: "dbmsMIS" },
+  { id: 'dbms3', kpiName: "Collaboration with Line Departments and Portal Developers", monthlyTarget: 'Continuous', currentValue: 'Ongoing', reportingFormat: "Meeting Notes, Email Records", category: "dbmsMIS" },
+];
+// --- END: Moved mockKPIs outside the component ---
+
 
 // Reusable component for displaying a single KPI card
 const KPICard = ({ kpi, onUpdateClick }) => {
@@ -124,43 +164,6 @@ const DashboardView = () => {
     const [showModal, setShowModal] = useState(false);
     const [selectedKpi, setSelectedKpi] = useState(null);
 
-    // Mock KPI data (to be replaced by real data from Azure backend)
-    const mockKPIs = [
-      { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
-      { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "common" },
-      { id: 'common3', kpiName: "Baseline Surveys or Field Assessments", description: "Surveys conducted for ground mapping", monthlyTarget: 4, currentValue: Math.min(4, Math.floor(Math.random() * 5) + 2), reportingFormat: "Google Sheet", category: "common" },
-      { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Application copies/Screenshot of status", category: "common" },
-      { id: 'common5', kpiName: "Follow-ups on Scheme Applications", description: "Tracking and facilitating pending cases", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Tracking Sheet with outcome status", category: "common" },
-      { id: 'common6', kpiName: "Workshops / EDP Organized", description: "Mobilization, awareness events", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Attendance sheets, photos, videos", category: "common" },
-      { id: 'common7', kpiName: "Financial Literacy or Formalization Support", description: "1-to-1 guidance on PAN, GST, Udyam, New Industrial Policy, etc.", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Documentation list, Google Sheet", category: "common" },
-      { id: 'common8', kpiName: "New Enterprise Cases Identified", description: "New informal businesses identified and profiled", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Enterprise profiling Google Sheet", category: "common" },
-      { id: 'common9', kpiName: "Credit Linkage Facilitation", description: "Referrals to banks, NBFCs", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Bank interaction/follow-up record/ google sheet", category: "common" },
-      { id: 'common10', kpiName: "Portal/MIS Updates & Data Entry", description: "Timely data updates in MIS/Google Sheets", monthlyTarget: 100, currentValue: Math.min(100, Math.floor(Math.random() * 105) + 90), reportingFormat: "MIS Portal/Google Sheet", category: "common" },
-      { id: 'common11', kpiName: "Convergence & Departmental Coordination", description: "Meetings with DICs, RD, Agri/Horti, etc.", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Meeting MoM or signed attendance list", category: "common" },
-      { id: 'common12', kpiName: "Support to EDPs, RAMP, and Field Activities", description: "Participation in Enterprise Development Programs or RAMP", monthlyTarget: 'As per deployment', currentValue: 'Met', reportingFormat: "Program report signed by supervisor", category: "common" },
-      { id: 'common13', kpiName: "Case Studies / Beneficiary Success Stories", description: "Documenting success stories from the field", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Minimum 500 words + image/video", category: "common" },
-      { id: 'common14', kpiName: "Pollution/Pollutant Check", description: "Visit to Industrial Estate, and do proper reading of machine for pollution/pollutant", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Google sheet with geo tagged photos", category: "common" },
-
-      { id: 'eco1', kpiName: "Loan Applications Supported", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "ecosystem" },
-      { id: 'eco2', kpiName: "Business Model/Plan Guidance Provided", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "ecosystem" },
-      { id: 'eco3', kpiName: "Artisans/Entrepreneurs Linked to Schemes", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "ecosystem" },
-      { id: 'eco4', kpiName: "Financial Literacy Sessions (Group) Conducted", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Photos/Videos/Google Sheet", category: "ecosystem" },
-      { id: 'eco5', kpiName: "New Initiatives in Entrepreneurship Promotion", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Report/Google Sheet", category: "ecosystem" },
-      { id: 'eco6', kpiName: "Enterprise/Business Ideas Scouted", monthlyTarget: 1, currentValue: Math.min(1, Math.floor(Math.random() * 2) + 0), reportingFormat: "Report/Google Sheet", category: "ecosystem" },
-
-      { id: 'hosp1', kpiName: "Tourism Potential Sites Documented or Supported", monthlyTarget: 2, currentValue: Math.min(2, Math.floor(Math.random() * 3) + 1), reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
-      { id: 'hosp2', kpiName: "Tourism Promotion Events / Community Engagements", monthlyTarget: 4, currentValue: Math.min(4, Math.floor(Math.random() * 5) + 2), reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
-      { id: 'hosp3', kpiName: "Homestays/Tour Operators Onboarded/Assisted", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "hospitality" },
-      { id: 'hosp4', kpiName: "Local Youth/SHGs Trained in Tourism/Hospitality Services", monthlyTarget: 10, currentValue: Math.min(10, Math.floor(Math.random() * 12) + 8), reportingFormat: "Google Sheet", category: "hospitality" },
-
-      { id: 'agri1', kpiName: "Agri/Forest-Based Enterprises Supported", monthlyTarget: 5, currentValue: Math.min(5, Math.floor(Math.random() * 7) + 3), reportingFormat: "Google Sheet", category: "agriForest" },
-      { id: 'agri2', kpiName: "SHGs Linked to Agri/Animal Husbandry/Processing Units", monthlyTarget: 3, currentValue: Math.min(3, Math.floor(Math.random() * 4) + 1), reportingFormat: "Google Sheet", category: "agriForest" },
-
-      { id: 'dbms1', kpiName: "Portal/MIS Data Entry & Monitoring", monthlyTarget: 100, currentValue: Math.min(100, Math.floor(Math.random() * 105) + 90), reportingFormat: "Google Sheet, MIS Portal", category: "dbmsMIS" },
-      { id: 'dbms2', kpiName: "Data Validation, Error Rectification, and Reporting", monthlyTarget: 'Monthly Review', currentValue: 'Completed', reportingFormat: "Issue logs, rectification reports via email", category: "dbmsMIS" },
-      { id: 'dbms3', kpiName: "Collaboration with Line Departments and Portal Developers", monthlyTarget: 'Continuous', currentValue: 'Ongoing', reportingFormat: "Meeting Notes, Email Records", category: "dbmsMIS" },
-    ];
-
 
     // Function to filter KPIs by category
     const getKpisByCategory = (category) => kpis.filter(kpi => kpi.category === category);
@@ -173,7 +176,7 @@ const DashboardView = () => {
         // Ensure user and token are available before attempting to fetch
         if (!currentUser || !userToken) {
             console.log('User not authenticated or token not available, not fetching KPIs.');
-            setKpis(mockKPIs); // Fallback to mock data or clear if not logged in
+            setKpis(mockKPIs); // Fallback to mock data
             setLoading(false);
             return;
         }
@@ -208,7 +211,7 @@ const DashboardView = () => {
         } finally {
             setLoading(false);
         }
-    }, [currentUser, userToken]); // Dependencies for useCallback
+    }, [currentUser, userToken, mockKPIs]); // Added mockKPIs as a dependency
 
     // Function to handle saving updated KPI data to the backend
     const handleSaveKpi = async (kpiId, newValue, udyamMitraId) => {
