@@ -1,23 +1,19 @@
 // src/components/AdminDashboard.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react'; // Removed useEffect as it's not used
 import { useAuth } from '../AuthContext';
 import DashboardView from './DashboardView'; // Import the new DashboardView component
 import UserManagement from './UserManagement'; // New component for user management
 import KpiManagement from './KpiManagement'; // New component for KPI management
 
 const AdminDashboard = () => {
-    const { userToken, currentUser } = useAuth();
+    // Removed userToken and currentUser from destructuring as they are not directly used in this component
+    // DashboardView and other child components will get them from useAuth directly.
+    const { } = useAuth(); 
     const [activeTab, setActiveTab] = useState('user-management'); // 'user-management', 'kpi-management', 'view-user-kpis'
     const [selectedUdyamMitra, setSelectedUdyamMitra] = useState(null); // User object from Firebase Auth
 
-    // The fetchKpiDataForAdminView is no longer strictly needed here
-    // as DashboardView handles its own fetching based on the prop.
-    // This empty useCallback is just a placeholder to keep the code structure.
-    const fetchKpiDataForAdminView = useCallback((uid) => {
-        console.log(`Admin requested to view KPIs for UID: ${uid}. Redirecting to DashboardView.`);
-        // The actual fetch will happen inside DashboardView when it mounts with targetUidForAdminView.
-    }, []);
-
+    // Removed fetchKpiDataForAdminView as it was a placeholder and is no longer needed.
+    // DashboardView handles its own fetching based on the targetUidForAdminView prop.
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
