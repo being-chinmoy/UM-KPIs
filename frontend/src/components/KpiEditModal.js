@@ -3,12 +3,13 @@ import React, { useState, useEffect } from 'react';
 
 const KpiEditModal = ({ kpi, onClose, onSave, kpiCategories }) => {
     const [formData, setFormData] = useState({
-        id: kpi?.id || '', // KPI ID, if editing, otherwise empty for new
-        kpiName: kpi?.kpiName || '',
-        description: kpi?.description || '',
-        monthlyTarget: kpi?.monthlyTarget || '',
-        reportingFormat: kpi?.reportingFormat || '',
-        category: kpi?.category || (kpiCategories.length > 0 ? kpiCategories[0].value : ''), // Default to first category
+        // Replaced kpi?.id with (kpi ? kpi.id : '') for broader compatibility
+        id: (kpi ? kpi.id : '') || '', 
+        kpiName: (kpi ? kpi.kpiName : '') || '', // Replaced kpi?.kpiName
+        description: (kpi ? kpi.description : '') || '', // Replaced kpi?.description
+        monthlyTarget: (kpi ? kpi.monthlyTarget : '') || '', // Replaced kpi?.monthlyTarget
+        reportingFormat: (kpi ? kpi.reportingFormat : '') || '', // Replaced kpi?.reportingFormat
+        category: (kpi ? kpi.category : '') || (kpiCategories.length > 0 ? kpiCategories[0].value : ''), // Replaced kpi?.category
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -17,12 +18,12 @@ const KpiEditModal = ({ kpi, onClose, onSave, kpiCategories }) => {
     useEffect(() => {
         // Reset form data when a different KPI is selected for editing, or when creating new
         setFormData({
-            id: kpi?.id || '',
-            kpiName: kpi?.kpiName || '',
-            description: kpi?.description || '',
-            monthlyTarget: kpi?.monthlyTarget || '',
-            reportingFormat: kpi?.reportingFormat || '',
-            category: kpi?.category || (kpiCategories.length > 0 ? kpiCategories[0].value : ''),
+            id: (kpi ? kpi.id : '') || '',
+            kpiName: (kpi ? kpi.kpiName : '') || '',
+            description: (kpi ? kpi.description : '') || '',
+            monthlyTarget: (kpi ? kpi.monthlyTarget : '') || '',
+            reportingFormat: (kpi ? kpi.reportingFormat : '') || '',
+            category: (kpi ? kpi.category : '') || (kpiCategories.length > 0 ? kpiCategories[0].value : ''),
         });
         setError(null);
         setMessage('');
@@ -94,7 +95,8 @@ const KpiEditModal = ({ kpi, onClose, onSave, kpiCategories }) => {
                             className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                             placeholder="e.g., common15"
                             required
-                            disabled={loading || !!kpi?.id} {/* Disable ID if editing existing KPI */}
+                            // Replaced !!kpi?.id with !!(kpi && kpi.id) for broader compatibility
+                            disabled={loading || !!(kpi && kpi.id)} 
                         />
                         {kpi && <p className="text-xs text-gray-500 mt-1">ID cannot be changed for existing KPIs.</p>}
                     </div>
