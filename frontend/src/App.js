@@ -18,7 +18,7 @@ const mockKPIs = [
   { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, currentValue: 0, reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
   { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, currentValue: 0, reportingFormat: "Google Sheet", category: "common" },
   { id: 'common3', kpiName: "Baseline Surveys or Field Assessments", description: "Surveys conducted for ground mapping", monthlyTarget: 4, currentValue: 0, reportingFormat: "Google Sheet", category: "common" },
-  { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, currentValue: 0, reportingFormat: "Application copies/Screenshot of status", category: "common" },
+  { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, currentValue: 0, reportingFormat: "Google Sheet", category: "common" },
   { id: 'common5', kpiName: "Follow-ups on Scheme Applications", description: "Tracking and facilitating pending cases", monthlyTarget: 5, currentValue: 0, reportingFormat: "Tracking Sheet with outcome status", category: "common" },
   { id: 'common6', kpiName: "Workshops / EDP Organized", description: "Mobilization, awareness events", monthlyTarget: 2, currentValue: 0, reportingFormat: "Attendance sheets, photos, videos", category: "common" },
   { id: 'common7', kpiName: "Financial Literacy or Formalization Support", description: "1-to-1 guidance on PAN, GST, Udyam, New Industrial Policy, etc.", monthlyTarget: 10, currentValue: 0, reportingFormat: "Documentation list, Google Sheet", category: "common" },
@@ -157,32 +157,38 @@ const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
 
 
 // Main Dashboard View Component for Udyam Mitras
-const UdyamMitraDashboardView = () => {
-    const { currentUser, userToken } = useAuth(); // Assuming useAuth provides userToken and currentUser.uid
+// Exported so AdminDashboard can re-use it to view specific user's KPIs
+export const UdyamMitraDashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdminView prop
+    const { currentUser, userToken } = useAuth(); 
     const [kpis, setKpis] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [selectedKpi, setSelectedKpi] = useState(null);
 
+    // Determine which UID to use for fetching KPIs
+    // If targetUidForAdminView is provided (from AdminDashboard), use that.
+    // Otherwise, use the current logged-in user's UID.
+    const effectiveUid = targetUidForAdminView || currentUser?.uid;
+
+
     // Function to filter KPIs by category
     const getKpisByCategory = (category) => kpis.filter(kpi => kpi.category === category);
 
     // Use useCallback for fetchKpiData to memoize it and prevent unnecessary re-renders
-    const fetchKpiData = useCallback(async (targetUdyamMitraUid = currentUser.uid) => {
+    const fetchKpiData = useCallback(async () => {
         setLoading(true);
         setError(null);
 
-        // Ensure user and token are available before attempting to fetch
-        if (!currentUser || !userToken) {
-            console.log('User not authenticated or token not available, setting KPIs to empty array.');
-            setKpis([]); // Set to empty array if no user/token
+        // Ensure user and token are available AND an effective UID is determined before attempting to fetch
+        if (!currentUser || !userToken || !effectiveUid) {
+            console.log('User not authenticated, token not available, or effective UID not determined. Not fetching KPIs.');
+            setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); // Fallback to mock data with 0s
             setLoading(false);
             return;
         }
 
         try {
-            // Updated to use the integrated Azure Static Web Apps API endpoint
             const getKpiUrl = `https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/GetKPIs`;
             
             const response = await fetch(getKpiUrl, {
@@ -192,10 +198,8 @@ const UdyamMitraDashboardView = () => {
                     'Authorization': `Bearer ${userToken}` // Send the Firebase ID token
                 },
                 body: JSON.stringify({
-                    // Send the UID of the user whose KPIs are being requested
-                    // If an admin is viewing another user's dashboard, targetUdyamMitraUid will be different
-                    requestedUid: targetUdyamMitraUid, 
-                    // Optionally send current month/year if filtering is by period
+                    requestedUid: effectiveUid, // Send the UID of the user whose KPIs are being requested
+                    // You can also add month/year filters here if needed for GetKPIs
                     // monthYear: new Date().toISOString().substring(0, 7)
                 })
             });
@@ -214,8 +218,8 @@ const UdyamMitraDashboardView = () => {
             
             // If no data is returned from backend, use mock data for initial display
             if (data.length === 0) {
-                console.log("No KPIs returned from backend, initializing with mock data for submission purposes.");
-                setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); // Reset current value for mock data display
+                console.log("No KPIs returned from backend, initializing with mock data structure.");
+                setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); 
             } else {
                 // Backend should ideally return full KPI objects with current values.
                 // If it only returns current values, you might need to merge with a local master list.
@@ -226,14 +230,14 @@ const UdyamMitraDashboardView = () => {
         } catch (e) {
             console.error("Failed to fetch data from backend:", e);
             setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); // Fallback to mock data on *any* fetch error
-            setError(`Failed to load real-time data from Azure: ${e.message}. Displaying initial KPI structure for submission.`);
+            setError(`Failed to load real-time data from Azure: ${e.message}. Displaying initial KPI structure.`);
         } finally {
             setLoading(false);
         }
-    }, [currentUser, userToken]); 
+    }, [currentUser, userToken, effectiveUid]); // Added effectiveUid to useCallback dependencies
 
     // Function to handle saving updated KPI data to the backend
-    const handleSaveKpi = async (kpiId, newValue) => { // Removed udyamMitraId, will use currentUser.uid
+    const handleSaveKpi = async (kpiId, newValue) => { 
         // Ensure user and token are available before attempting to save
         if (!currentUser || !userToken) {
             console.error('User not authenticated or token not available, cannot save KPI.');
@@ -279,9 +283,10 @@ const UdyamMitraDashboardView = () => {
     useEffect(() => {
         // Trigger fetchKpiData when component mounts or currentUser/userToken changes
         if (currentUser && userToken) {
-            fetchKpiData(currentUser.uid); // Pass the current user's UID
+            // No need to pass effectiveUid here, it's captured by useCallback's closure
+            fetchKpiData(); 
         }
-    }, [fetchKpiData, currentUser, userToken]); // Added currentUser and userToken to useEffect dependencies
+    }, [fetchKpiData, currentUser, userToken]); 
 
     // Filter KPIs by category for display
     const commonKpis = getKpisByCategory('common');
@@ -293,7 +298,7 @@ const UdyamMitraDashboardView = () => {
     return (
         <div className="min-h-screen bg-gray-100 p-4">
             <header className="mb-8 text-center">
-                <h1 className="text-4xl font-extrabold text-blue-800 tracking-tight">Udyam Mitra KPI Dashboard</h1>
+                <h1 className="text-4xl font-extrabold text-blue-800 tracking-tight">Udyam Mitra KPI Dashboard {targetUidForAdminView ? `for ${targetUidForAdminView}` : ''}</h1>
                 <p className="text-xl text-gray-600 mt-2">Tracking Key Performance Indicators for Udyam Mitras</p>
                 {error && <p className="text-red-500 mt-2">{error}</p>}
             </header>
