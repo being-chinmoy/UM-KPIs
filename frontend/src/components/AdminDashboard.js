@@ -1,7 +1,7 @@
 // src/components/AdminDashboard.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { UdyamMitraDashboardView } from '../App'; // Re-use the existing dashboard view for specific users
+import DashboardView from './DashboardView'; // Import the new DashboardView component
 import UserManagement from './UserManagement'; // New component for user management
 import KpiManagement from './KpiManagement'; // New component for KPI management
 
@@ -10,13 +10,12 @@ const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('user-management'); // 'user-management', 'kpi-management', 'view-user-kpis'
     const [selectedUdyamMitra, setSelectedUdyamMitra] = useState(null); // User object from Firebase Auth
 
-    // Pass fetchKpiData down if AdminDashboard needs to trigger a full refresh of Kpis for specific Udyam Mitra
-    // This is a simplified version; in a full app, the fetch logic might be in a shared hook or global state.
-    const fetchKpiDataForAdminView = useCallback(async (uid) => {
-        // This function will be passed to UserManagement to fetch a specific user's KPIs
-        // This is essentially calling the UdyamMitraDashboardView's fetchKpiData logic
-        // For simplicity, we can route directly to the UdyamMitraDashboardView with the selected UID
-        console.log(`Admin requested to view KPIs for UID: ${uid}`);
+    // The fetchKpiDataForAdminView is no longer strictly needed here
+    // as DashboardView handles its own fetching based on the prop.
+    // This empty useCallback is just a placeholder to keep the code structure.
+    const fetchKpiDataForAdminView = useCallback((uid) => {
+        console.log(`Admin requested to view KPIs for UID: ${uid}. Redirecting to DashboardView.`);
+        // The actual fetch will happen inside DashboardView when it mounts with targetUidForAdminView.
     }, []);
 
 
@@ -64,8 +63,8 @@ const AdminDashboard = () => {
                         >
                             ← Back to User Management
                         </button>
-                        {/* Re-use the UdyamMitraDashboardView but pass the selected user's UID */}
-                        <UdyamMitraDashboardView targetUidForAdminView={selectedUdyamMitra.uid} />
+                        {/* Re-use the DashboardView but pass the selected user's UID */}
+                        <DashboardView targetUidForAdminView={selectedUdyamMitra.uid} />
                     </div>
                 )}
             </main>
