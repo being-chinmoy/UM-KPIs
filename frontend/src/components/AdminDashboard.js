@@ -6,14 +6,16 @@ import UserManagement from './UserManagement'; // New component for user managem
 import KpiManagement from './KpiManagement'; // New component for KPI management
 
 const AdminDashboard = () => {
-    // Removed userToken and currentUser from destructuring as they are not directly used in this component
-    // DashboardView and other child components will get them from useAuth directly.
+    // These values (currentUser, userToken) are only needed if directly used in AdminDashboard's JSX or logic.
+    // If they are only passed down to children, the children can use useAuth directly.
+    // They are no longer destructured here to avoid ESLint warnings as they are not used directly in this component.
     const { } = useAuth(); 
     const [activeTab, setActiveTab] = useState('user-management'); // 'user-management', 'kpi-management', 'view-user-kpis'
     const [selectedUdyamMitra, setSelectedUdyamMitra] = useState(null); // User object from Firebase Auth
 
-    // Removed fetchKpiDataForAdminView as it was a placeholder and is no longer needed.
-    // DashboardView handles its own fetching based on the targetUidForAdminView prop.
+    // The fetchKpiDataForAdminView was a placeholder and is no longer needed.
+    // DashboardView now handles its own fetching logic based on the targetUidForAdminView prop.
+    // This part of the code has been entirely removed from the component to resolve the 'never used' warning.
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
