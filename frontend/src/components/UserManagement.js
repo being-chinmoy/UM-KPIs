@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext'; // To get admin's token
 import RoleAssignmentModal from './RoleAssignmentModal'; // New component for role assignment
 
 const UserManagement = ({ onSelectUdyamMitra }) => {
-    const { userToken, currentUser } = useAuth(); // Destructure currentUser as well for context
+    const { userToken } = useAuth(); // Removed currentUser as it's not directly used in this component
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
