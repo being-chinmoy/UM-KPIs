@@ -1,4 +1,4 @@
-// src/components/RoleAssignmentModal.js
+// frontend/src/components/RoleAssignmentModal.js
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 
@@ -9,15 +9,22 @@ const RoleAssignmentModal = ({ user, onClose, onSuccess }) => {
     const [error, setError] = useState(null);
     const [message, setMessage] = useState('');
 
-    const FUNCTION_APP_BASE_URL = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api';
-    const SET_USER_ROLE_KEY = 'RYbyy5wbosL04Pf4DEavAqDGdG7q3qqWXpjgOtVKR69XAzFui2dBSw=='; 
+    // Using environment variables for API URL and key
+    const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
+    const SET_USER_ROLE_KEY = process.env.REACT_APP_SET_USER_ROLE_KEY; 
 
     const handleSaveRole = async () => {
         setLoading(true);
         setError(null);
         setMessage('');
         try {
-            // Using the external Function App URL with key
+            // Check if SET_USER_ROLE_KEY is defined.
+            if (!FUNCTION_APP_BASE_URL || !SET_USER_ROLE_KEY) {
+                setError("API URL or SetUserRole key is not configured in environment variables. Role assignment will not work.");
+                setLoading(false);
+                return;
+            }
+
             const response = await fetch(`${FUNCTION_APP_BASE_URL}/SetUserRole?code=${SET_USER_ROLE_KEY}`, {
                 method: 'POST',
                 headers: {

@@ -1,48 +1,24 @@
-// GetKPIs/index.js
+// api/GetKPIs/index.js
 // This function fetches KPI data from Cosmos DB.
-// It uses Firebase ID token verification for authentication and authorization.
-// Admin users can fetch all KPIs, while 'udyamMitra' users fetch only
-// KPIs assigned to them for the current month/period.
+// If requestedUid is provided, it fetches assigned KPIs for that user.
+// If requested by an admin without a specific user, it fetches all master KPI definitions.
 
-const admin = require('firebase-admin'); // Firebase Admin SDK for custom claims
 const { CosmosClient } = require('@azure/cosmos');
 const jwt = require('jsonwebtoken');
 const jwkToPem = require('jwk-to-pem');
+const fetch = require('node-fetch'); // Required for fetching JWKS
 
-// Firebase Admin SDK initialization (same as in other functions)
-let firebaseAdminInitialized = false;
-function initializeFirebaseAdmin(context) {
-    if (!firebaseAdminInitialized) {
-        const serviceAccountConfigBase64 = process.env.FIREBASE_ADMIN_SDK_CONFIG;
-        const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
+// Cosmos DB Client Setup (ensure CosmosDbConnection is set in Application Settings)
+const connectionString = process.env.CosmosDbConnection;
+const client = new CosmosClient(connectionString);
+const databaseId = "UdyamMitraDB"; // Your Cosmos DB database ID
+const masterKpiContainerId = "MasterKPIs"; // Container for master KPI definitions
+const assignedKpiContainerId = "AssignedKPIs"; // Container for user-assigned KPIs
+const masterKpiContainer = client.database(databaseId).container(masterKpiContainerId);
+const assignedKpiContainer = client.database(databaseId).container(assignedKpiContainerId);
 
-        if (!serviceAccountConfigBase64 || !firebaseProjectId) {
-            context.log.error("FIREBASE_ADMIN_SDK_CONFIG or FIREBASE_PROJECT_ID environment variables not set.");
-            throw new Error("Firebase Admin SDK config is missing.");
-        }
 
-        try {
-            const serviceAccountConfigJson = Buffer.from(serviceAccountConfigBase64, 'base64').toString('utf8');
-            const serviceAccount = JSON.parse(serviceAccountConfigJson);
-
-            if (serviceAccount.project_id && serviceAccount.project_id !== firebaseProjectId) {
-                context.log.error(`Service account project ID mismatch. Expected ${firebaseProjectId}, got ${serviceAccount.project_id}.`);
-                throw new Error("Firebase Admin SDK project ID in config does not match FIREBASE_PROJECT_ID env variable.");
-            }
-
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount)
-            });
-            firebaseAdminInitialized = true;
-            context.log("Firebase Admin SDK initialized successfully.");
-        } catch (error) {
-            context.log.error("Error initializing Firebase Admin SDK:", error);
-            throw new Error(`Failed to initialize Firebase Admin SDK: ${error.message}`);
-        }
-    }
-}
-
-// Cache for Firebase public keys (JWKS)
+// Cache for Firebase public keys (JWKS) to avoid fetching on every request
 let firebasePublicKeys = null;
 const FIREBASE_JWKS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 
@@ -64,63 +40,13 @@ async function getFirebasePublicKeys(context) {
     }
 }
 
-// Initial KPI data (copied directly from your frontend's mockKPIs)
-// This serves as the master list of KPIs to be used if backend is empty or for metadata merging.
-const masterKPIsData = [
-  { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
-  { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, reportingFormat: "Google Sheet", category: "common" },
-  { id: 'common3', kpiName: "Baseline Surveys or Field Assessments", description: "Surveys conducted for ground mapping", monthlyTarget: 4, reportingFormat: "Google Sheet", category: "common" },
-  { id: 'common4', kpiName: "Scheme Applications Facilitated", description: "Applications in PMFME, PMEGP, UDYAM, E-Shram, etc.", monthlyTarget: 10, reportingFormat: "Application copies/Screenshot of status", category: "common" },
-  { id: 'common5', kpiName: "Follow-ups on Scheme Applications", description: "Tracking and facilitating pending cases", monthlyTarget: 5, reportingFormat: "Tracking Sheet with outcome status", category: "common" },
-  { id: 'common6', kpiName: "Workshops / EDP Organized", description: "Mobilization, awareness events", monthlyTarget: 2, reportingFormat: "Attendance sheets, photos, videos", category: "common" },
-  { id: 'common7', kpiName: "Financial Literacy or Formalization Support", description: "1-to-1 guidance on PAN, GST, Udyam, New Industrial Policy, etc.", monthlyTarget: 10, reportingFormat: "Documentation list, Google Sheet", category: "common" },
-  { id: 'common8', kpiName: "New Enterprise Cases Identified", description: "New informal businesses identified and profiled", monthlyTarget: 5, reportingFormat: "Enterprise profiling Google Sheet", category: "common" },
-  { id: 'common9', kpiName: "Credit Linkage Facilitation", description: "Referrals to banks, NBFCs", monthlyTarget: 5, reportingFormat: "Bank interaction/follow-up record/ google sheet", category: "common" },
-  { id: 'common10', kpiName: "Portal/MIS Updates & Data Entry", description: "Timely data updates in MIS/Google Sheets", monthlyTarget: 100, reportingFormat: "MIS Portal/Google Sheet", category: "common" },
-  { id: 'common11', kpiName: "Convergence & Departmental Coordination", description: "Meetings with DICs, RD, Agri/Horti, etc.", monthlyTarget: 2, reportingFormat: "Meeting MoM or signed attendance list", category: "common" },
-  { id: 'common12', kpiName: "Support to EDPs, RAMP, and Field Activities", description: "Participation in Enterprise Development Programs or RAMP", monthlyTarget: 'As per deployment', reportingFormat: "Program report signed by supervisor", category: "common" },
-  { id: 'common13', kpiName: "Case Studies / Beneficiary Success Stories", description: "Documenting success stories from the field", monthlyTarget: 1, reportingFormat: "Minimum 500 words + image/video", category: "common" },
-  { id: 'common14', kpiName: "Pollution/Pollutant Check", description: "Visit to Industrial Estate, and do proper reading of machine for pollution/pollutant", monthlyTarget: 2, reportingFormat: "Google sheet with geo tagged photos", category: "common" },
-
-  { id: 'eco1', kpiName: "Loan Applications Supported", monthlyTarget: 5, reportingFormat: "Google Sheet", category: "ecosystem" },
-  { id: 'eco2', kpiName: "Business Model/Plan Guidance Provided", monthlyTarget: 5, reportingFormat: "Google Sheet", category: "ecosystem" },
-  { id: 'eco3', kpiName: "Artisans/Entrepreneurs Linked to Schemes", monthlyTarget: 10, reportingFormat: "Google Sheet", category: "ecosystem" },
-  { id: 'eco4', kpiName: "Financial Literacy Sessions (Group) Conducted", monthlyTarget: 5, reportingFormat: "Photos/Videos/Google Sheet", category: "ecosystem" },
-  { id: 'eco5', kpiName: "New Initiatives in Entrepreneurship Promotion", monthlyTarget: 1, reportingFormat: "Report/Google Sheet", category: "ecosystem" },
-  { id: 'eco6', kpiName: "Enterprise/Business Ideas Scouted", monthlyTarget: 1, reportingFormat: "Report/Google Sheet", category: "ecosystem" },
-
-  { id: 'hosp1', kpiName: "Tourism Potential Sites Documented or Supported", monthlyTarget: 2, reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
-  { id: 'hosp2', kpiName: "Tourism Promotion Events / Community Engagements", monthlyTarget: 4, reportingFormat: "Photos/Videos/Google Sheet", category: "hospitality" },
-  { id: 'hosp3', kpiName: "Homestays/Tour Operators Onboarded/Assisted", monthlyTarget: 5, reportingFormat: "Google Sheet", category: "hospitality" },
-  { id: 'hosp4', kpiName: "Local Youth/SHGs Trained in Tourism/Hospitality Services", monthlyTarget: 10, reportingFormat: "Google Sheet", category: "hospitality" },
-
-  { id: 'agri1', kpiName: "Agri/Forest-Based Enterprises Supported", monthlyTarget: 5, reportingFormat: "Google Sheet", category: "agriForest" },
-  { id: 'agri2', kpiName: "SHGs Linked to Agri/Animal Husbandry/Processing Units", monthlyTarget: 3, reportingFormat: "Google Sheet", category: "agriForest" },
-
-  { id: 'dbms1', kpiName: "Portal/MIS Data Entry & Monitoring", monthlyTarget: 100, reportingFormat: "Google Sheet, MIS Portal", category: "dbmsMIS" },
-  { id: 'dbms2', kpiName: "Data Validation, Error Rectification, and Reporting", monthlyTarget: 'Monthly Review', reportingFormat: "Issue logs, rectification reports via email", category: "dbmsMIS" },
-  { id: 'dbms3', kpiName: "Collaboration with Line Departments and Portal Developers", monthlyTarget: 'Continuous', reportingFormat: "Meeting Notes, Email Records", category: "dbmsMIS" },
-];
-
-
 module.exports = async function (context, req) {
     context.log('HTTP trigger function processed a request for GetKPIs.');
-
-    // Initialize Firebase Admin SDK for role checking
-    try {
-        initializeFirebaseAdmin(context);
-    } catch (error) {
-        context.res = {
-            status: 500,
-            body: `Server configuration error: ${error.message}`
-        };
-        return;
-    }
 
     // --- Authentication and Authorization ---
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        context.res = { status: 401, body: "Authorization token required. Please log in." };
+        context.res = { status: 401, body: "Authorization token required." };
         return;
     }
 
@@ -132,7 +58,9 @@ module.exports = async function (context, req) {
             jwt.verify(idToken, (header, callback) => {
                 const kid = header.kid;
                 const jwk = Object.values(jwks).find(k => k.kid === kid);
-                if (!jwk) return callback(new Error('Firebase public key not found for token.'));
+                if (!jwk) {
+                    return callback(new Error('Firebase public key not found for token KID.'));
+                }
                 callback(null, jwkToPem(jwk));
             }, { algorithms: ['RS256'] }, (err, decoded) => {
                 if (err) reject(err);
@@ -145,93 +73,52 @@ module.exports = async function (context, req) {
             throw new Error('Firebase token audience or issuer mismatch.');
         }
 
-        context.log(`Token verified for user: ${decodedToken.email} (UID: ${decodedToken.uid}) with role: ${decodedToken.role || 'udyamMitra'}`);
+        context.log(`User ${decodedToken.email} (UID: ${decodedToken.uid}, Role: ${decodedToken.role || 'udyamMitra'}) is requesting KPIs.`);
 
     } catch (error) {
-        context.log.error('Firebase token verification failed:', error);
-        context.res = { status: 403, body: `Invalid or expired authentication token: ${error.message}` };
+        context.log.error('Token verification failed:', error);
+        context.res = { status: 403, body: `Invalid or expired token: ${error.message}` };
         return;
     }
     // --- End Authentication and Authorization ---
 
-    const cosmosDbConnection = process.env.CosmosDbConnection;
-    const databaseId = 'KpiDb'; // Your actual database ID
-    const submissionsContainerId = 'KPISubmissions'; // Container for KPI actual values and history
-    const assignmentsContainerId = 'UserKpiAssignments'; // New container for user-KPI assignments
-
-    if (!cosmosDbConnection) {
-        context.log.error("CosmosDbConnection environment variable not set.");
-        context.res = { status: 500, body: "Cosmos DB connection string is missing." };
-        return;
-    }
-
-    const client = new CosmosClient(cosmosDbConnection);
-    const database = client.database(databaseId);
-    const submissionsContainer = database.container(submissionsContainerId);
-    const assignmentsContainer = database.container(assignmentsContainerId);
-
-    const userRole = decodedToken.role || 'udyamMitra'; // Get role from custom claims
-    const requestedUid = req.body.requestedUid; // Frontend sends UID of user whose KPIs are being requested
-    const currentMonthYear = new Date().toISOString().substring(0, 7); // e.g., "2025-06"
-
-    let kpisToReturn = [];
+    const { requestedUid, monthYear } = req.body || {}; // Allow empty body for GET requests or admin requests for master KPIs
 
     try {
-        if (userRole === 'admin') {
-            context.log('Admin user detected. Fetching all KPIs and merging with master data.');
-            // Admins get all master KPIs and their latest values
-            const { resources: allSubmittedKpis } = await submissionsContainer.items.query('SELECT * FROM c').fetchAll();
-            
-            // Merge actual values from DB with master definitions
-            kpisToReturn = masterKPIsData.map(masterKpi => {
-                const submittedKpi = allSubmittedKpis.find(s => s.id === masterKpi.id);
-                // Return full master KPI data, but override currentValue if a submission exists
-                return { ...masterKpi, currentValue: submittedKpi ? submittedKpi.currentValue : 0 };
-            });
+        const currentMonthYear = monthYear || new Date().toISOString().substring(0, 7); // Default to current month
 
-        } else if (userRole === 'udyamMitra' && requestedUid === decodedToken.uid) {
-            context.log(`Udyam Mitra user ${decodedToken.email} detected. Fetching assigned KPIs.`);
-            // Udyam Mitras fetch only KPIs assigned to them for the current month
-            const assignmentDocId = `${decodedToken.uid}-${currentMonthYear}`;
-            let assignedKpiIds = [];
+        let kpisToReturn = [];
 
-            try {
-                const { resource: assignment } = await assignmentsContainer.item(assignmentDocId, decodedToken.uid).read();
-                assignedKpiIds = assignment.assignedKpiIds;
-                context.log(`KPIs assigned for ${decodedToken.uid} for ${currentMonthYear}: ${JSON.stringify(assignedKpiIds)}`);
-            } catch (err) {
-                if (err.code === 404) {
-                    context.log(`No KPI assignments found for Udyam Mitra ${decodedToken.uid} for ${currentMonthYear}.`);
-                    // If no assignments, default to common KPIs for initial setup/demo
-                    assignedKpiIds = masterKPIsData.filter(kpi => kpi.category === 'common').map(kpi => kpi.id);
-                } else {
-                    throw err; // Re-throw other errors
-                }
+        // If a specific UID is requested (typically by a Udyam Mitra for their own KPIs
+        // or by an admin viewing a specific Udyam Mitra's dashboard)
+        if (requestedUid) {
+            // Ensure the requesting user is either the requested UID or an admin
+            if (decodedToken.uid !== requestedUid && decodedToken.role !== 'admin') {
+                context.res = { status: 403, body: "Permission denied: You can only view your own KPIs unless you are an admin." };
+                return;
             }
 
-            if (assignedKpiIds.length > 0) {
-                // Fetch actual submitted values for assigned KPIs
-                const queryAssignedKpis = {
-                    query: `SELECT * FROM c WHERE ARRAY_CONTAINS(@kpiIds, c.id, true)`,
-                    parameters: [{ name: "@kpiIds", value: assignedKpiIds }]
-                };
-                const { resources: submittedAssignedKpis } = await submissionsContainer.items.query(queryAssignedKpis).fetchAll();
+            // Query assigned KPIs for the requested UID for the specific month/year
+            const querySpec = {
+                query: `SELECT * FROM c WHERE c.udyamMitraId = @udyamMitraId AND c.submissionMonthYear = @monthYear`,
+                parameters: [
+                    { name: "@udyamMitraId", value: requestedUid },
+                    { name: "@monthYear", value: currentMonthYear }
+                ]
+            };
+            const { resources: assignedKpis } = await assignedKpiContainer.items.query(querySpec).fetchAll();
+            kpisToReturn = assignedKpis;
 
-                // Merge with master definitions to ensure all metadata is present
-                kpisToReturn = assignedKpiIds.map(kpiId => {
-                    const masterKpi = masterKPIsData.find(m => m.id === kpiId);
-                    const submittedKpi = submittedAssignedKpis.find(s => s.id === kpiId);
-                    return masterKpi ? { ...masterKpi, currentValue: submittedKpi ? submittedKpi.currentValue : 0 } : null;
-                }).filter(kpi => kpi !== null); // Remove any nulls if an assigned KPI_ID doesn't exist in master
-            } else {
-                 context.log(`No KPIs assigned to Udyam Mitra ${decodedToken.uid} for ${currentMonthYear}. Returning empty list.`);
-                 // If explicitly no assignments (and not falling back to common), return empty
-                 kpisToReturn = [];
-            }
+            context.log(`Fetched ${assignedKpis.length} assigned KPIs for UID: ${requestedUid} for ${currentMonthYear}`);
+
+        } else if (decodedToken.role === 'admin') {
+            // If no specific UID is requested AND the user is an admin, return all master KPI definitions
+            const { resources: masterKpis } = await masterKpiContainer.items.readAll().fetchAll();
+            kpisToReturn = masterKpis;
+            context.log(`Fetched ${masterKpis.length} master KPIs for admin.`);
         } else {
-             // Handle case where udyamMitra tries to request someone else's data (not allowed)
-             // or other unauthorized access attempts for non-admin roles
-            context.res = { status: 403, body: "Forbidden: You are not authorized to view these KPIs." };
+            // If no specific UID is requested AND the user is not an admin, deny access
+            context.res = { status: 400, body: "Invalid request: Please specify a user ID or ensure you have admin privileges to fetch all master KPIs." };
             return;
         }
 
@@ -242,10 +129,7 @@ module.exports = async function (context, req) {
         };
 
     } catch (error) {
-        context.log.error('Error fetching KPIs from Cosmos DB:', error);
-        context.res = {
-            status: 500,
-            body: `Error processing KPI request: ${error.message}`
-        };
+        context.log.error('Error fetching KPIs:', error);
+        context.res = { status: 500, body: `Error fetching KPIs: ${error.message}` };
     }
 };

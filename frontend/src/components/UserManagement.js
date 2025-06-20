@@ -1,4 +1,4 @@
-// src/components/UserManagement.js
+// frontend/src/components/UserManagement.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import RoleAssignmentModal from './RoleAssignmentModal';
@@ -11,10 +11,9 @@ const UserManagement = ({ onSelectUdyamMitra }) => {
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [selectedUserForRole, setSelectedUserForRole] = useState(null);
 
-    const FUNCTION_APP_BASE_URL = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api';
-    // IMPORTANT: You need to get the function key for your GetUsers function if it exists.
-    // If GetUsers is not deployed, this will not work.
-    const GET_USERS_KEY = 'YOUR_GET_USERS_FUNCTION_KEY'; 
+    // Using environment variables for API URL and key
+    const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
+    const GET_USERS_KEY = process.env.REACT_APP_GET_USERS_KEY; 
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -22,6 +21,14 @@ const UserManagement = ({ onSelectUdyamMitra }) => {
         if (!userToken) {
             console.log("User token not available yet for fetching users. Waiting...");
             setUsers([]);
+            setLoading(false);
+            return;
+        }
+
+        // Basic check for missing environment variables
+        if (!FUNCTION_APP_BASE_URL || !GET_USERS_KEY) {
+            setError("API URL or GetUsers key is not configured in environment variables. User Management will not work.");
+            setUsers([]); // Ensure users list is cleared
             setLoading(false);
             return;
         }
@@ -53,7 +60,7 @@ const UserManagement = ({ onSelectUdyamMitra }) => {
         } finally {
             setLoading(false);
         }
-    }, [userToken]);
+    }, [userToken, FUNCTION_APP_BASE_URL, GET_USERS_KEY]); // Added env vars to dependencies
 
     useEffect(() => {
         if (userToken) {

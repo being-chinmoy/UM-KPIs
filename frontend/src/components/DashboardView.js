@@ -1,12 +1,10 @@
-// src/components/DashboardView.js
+// frontend/src/components/DashboardView.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../AuthContext'; // Import useAuth hook
+import { useAuth } from '../AuthContext';
 import UpdateKpiModal from './UpdateKpiModal';
 
 
-// Mock KPI data (will only be used as a fallback if backend fails completely on first fetch,
-// otherwise real data from Azure will populate the dashboard.
-// This array is intentionally defined outside components so it's a stable reference.
+// Mock KPI data (as a fallback if backend fails completely)
 const mockKPIs = [
   { id: 'common1', kpiName: "Enterprise Interactions (Field Visits)", description: "No. of MSMEs, SHGs, informal enterprises met (field grievances)", monthlyTarget: 10, currentValue: 0, reportingFormat: "Field Visit Report with geo-tagged photos", category: "common" },
   { id: 'common2', kpiName: "Beneficiary Grievances Resolved", description: "Grievances addressed for field enterprises", monthlyTarget: 10, currentValue: 0, reportingFormat: "Google Sheet", category: "common" },
@@ -44,14 +42,11 @@ const mockKPIs = [
 ];
 
 
-// Reusable component for displaying a single KPI card
 const KPICard = ({ kpi, onUpdateClick }) => {
-    // Calculate progress percentage, handling non-numeric targets/values
     const progressPercentage = typeof kpi.monthlyTarget === 'number' && typeof kpi.currentValue === 'number'
         ? Math.min(100, (kpi.currentValue / kpi.monthlyTarget) * 100).toFixed(0)
         : null;
 
-    // Determine progress bar color based on percentage
     let progressBarColor = 'bg-gray-300';
     if (progressPercentage !== null) {
         if (progressPercentage >= 100) {
@@ -99,7 +94,6 @@ const KPICard = ({ kpi, onUpdateClick }) => {
     );
 };
 
-// Component to display a section of KPIs (non-collapsible for the main section)
 const KPISection = ({ title, kpis, onUpdateClick }) => {
     return (
         <section className="mb-10 p-6 bg-white rounded-lg shadow-xl max-w-7xl mx-auto">
@@ -113,7 +107,6 @@ const KPISection = ({ title, kpis, onUpdateClick }) => {
     );
 };
 
-// Component for collapsible KPI sections
 const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -124,7 +117,6 @@ const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
                 className="flex justify-between items-center w-full text-left text-2xl font-bold text-blue-800 mb-4 pb-3 border-b-2 border-blue-200 focus:outline-none"
             >
                 <span>{title}</span>
-                {/* Icon for collapse/expand */}
                 <span className="text-blue-500 transition-transform duration-300 transform">
                     {isOpen ? (
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -150,50 +142,52 @@ const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
 
 
 // Main Dashboard View Component for Udyam Mitras
-// Exported as default from this file
-const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdminView prop
-    const { currentUser, userToken } = useAuth(); 
+const DashboardView = ({ targetUidForAdminView }) => {
+    const { currentUser, userToken } = useAuth();
     const [kpis, setKpis] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [selectedKpi, setSelectedKpi] = useState(null);
 
-    // Determine which UID to use for fetching KPIs
-    // If targetUidForAdminView is provided (from AdminDashboard), use that.
-    // Otherwise, use the current logged-in user's UID.
+    // Using environment variables for API URL and keys
+    const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
+    const GET_KPIS_KEY = process.env.REACT_APP_GET_KPIS_KEY; 
+    const UPDATE_KPI_SUBMISSION_KEY = process.env.REACT_APP_UPDATE_KPI_SUBMISSION_KEY; 
+
     const effectiveUid = targetUidForAdminView || currentUser?.uid;
 
-
-    // Function to filter KPIs by category
     const getKpisByCategory = (category) => kpis.filter(kpi => kpi.category === category);
 
-    // Use useCallback for fetchKpiData to memoize it and prevent unnecessary re-renders
     const fetchKpiData = useCallback(async () => {
         setLoading(true);
         setError(null);
 
-        // Ensure user and token are available AND an effective UID is determined before attempting to fetch
         if (!currentUser || !userToken || !effectiveUid) {
             console.log('User not authenticated, token not available, or effective UID not determined. Not fetching KPIs.');
-            setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); // Fallback to mock data with 0s
+            setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 })));
+            setLoading(false);
+            return;
+        }
+
+        // Basic check for missing environment variables during local development or build issues
+        if (!FUNCTION_APP_BASE_URL || !GET_KPIS_KEY) {
+            setError("API URL or GetKPIs key is not configured in environment variables. Cannot fetch KPIs.");
             setLoading(false);
             return;
         }
 
         try {
-            const getKpiUrl = `https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/GetKPIs`;
+            const getKpiUrl = `${FUNCTION_APP_BASE_URL}/GetKPIs?code=${GET_KPIS_KEY}`;
             
             const response = await fetch(getKpiUrl, {
-                method: 'POST', // Changed to POST to send UID in body for GetKPIs
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${userToken}` // Send the Firebase ID token
+                    'Authorization': `Bearer ${userToken}`
                 },
                 body: JSON.stringify({
-                    requestedUid: effectiveUid, // Send the UID of the user whose KPIs are being requested
-                    // You can also add month/year filters here if needed for GetKPIs
-                    // monthYear: new Date().toISOString().substring(0, 7)
+                    requestedUid: effectiveUid,
                 })
             });
 
@@ -202,55 +196,53 @@ const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdmi
                 console.error(`HTTP error! status: ${response.status}, message: ${errorText}`);
                 if (response.status === 401 || response.status === 403) {
                     setError("Authentication failed or token expired. Please try logging in again.");
-                    // Optional: force a logout or redirect to login
-                    // signOut(auth); 
                 }
                 throw new Error(`Failed to fetch KPIs: ${errorText}`);
             }
             const data = await response.json();
             
-            // If no data is returned from backend, use mock data for initial display
             if (data.length === 0) {
                 console.log("No KPIs returned from backend, initializing with mock data structure.");
                 setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); 
             } else {
-                // Backend should ideally return full KPI objects with current values.
-                // If it only returns current values, you might need to merge with a local master list.
-                // For now, assuming backend returns full KPI objects including current values.
                 setKpis(data);
             }
 
         } catch (e) {
             console.error("Failed to fetch data from backend:", e);
-            setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 }))); // Fallback to mock data on *any* fetch error
-            setError(`Failed to load real-time data from Azure: ${e.message}. Displaying initial KPI structure.`);
+            setKpis(mockKPIs.map(kpi => ({ ...kpi, currentValue: 0 })));
+            setError(`Failed to load real-time data from Azure Function App: ${e.message}. Displaying initial KPI structure.`);
         } finally {
             setLoading(false);
         }
-    }, [currentUser, userToken, effectiveUid]); // Added effectiveUid to useCallback dependencies
+    }, [currentUser, userToken, effectiveUid, FUNCTION_APP_BASE_URL, GET_KPIS_KEY]); // Added env vars to dependencies
 
-    // Function to handle saving updated KPI data to the backend
     const handleSaveKpi = async (kpiId, newValue) => { 
-        // Ensure user and token are available before attempting to save
         if (!currentUser || !userToken) {
             console.error('User not authenticated or token not available, cannot save KPI.');
             setError('Authentication required to save KPI.');
             return false;
         }
 
+        // Basic check for missing environment variables
+        if (!FUNCTION_APP_BASE_URL || !UPDATE_KPI_SUBMISSION_KEY) {
+            setError("API URL or UpdateKpiSubmission key is not configured in environment variables. Cannot save KPI.");
+            return false;
+        }
+
         try {
-            const updateKpiUrl = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api/UpdateKpiSubmission'; 
+            const updateKpiUrl = `${FUNCTION_APP_BASE_URL}/UpdateKpiSubmission?code=${UPDATE_KPI_SUBMISSION_KEY}`; 
 
             const response = await fetch(updateKpiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${userToken}` // Send the Firebase ID token
+                    'Authorization': `Bearer ${userToken}`
                 },
                 body: JSON.stringify({
                     kpiId: kpiId, 
                     submittedValue: newValue, 
-                    udyamMitraId: currentUser.uid, // Use currentUser.uid directly for submission
+                    udyamMitraId: currentUser.uid,
                     submissionDate: new Date().toISOString(), 
                     submissionMonthYear: new Date().toISOString().substring(0, 7)
                 }),
@@ -262,25 +254,22 @@ const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdmi
                 throw new Error(`HTTP error! Status: ${response.status}. Details: ${errorBody.message || response.statusText}`);
             }
 
-            await fetchKpiData(); // This will refresh the dashboard with potentially updated current values
-            return true; // Indicate success
+            await fetchKpiData();
+            return true;
 
         } catch (e) {
             console.error("Error submitting KPI update:", e);
             setError(`Failed to submit KPI update: ${e.message}`);
-            throw e; // Re-throw to be caught by the modal
+            throw e;
         }
     };
 
-    // useEffect to call fetchKpiData when the component mounts or fetchKpiData changes
     useEffect(() => {
-        // Trigger fetchKpiData when component mounts or currentUser/userToken changes
         if (currentUser && userToken) {
             fetchKpiData(); 
         }
     }, [fetchKpiData, currentUser, userToken]); 
 
-    // Filter KPIs by category for display
     const commonKpis = getKpisByCategory('common');
     const ecosystemKpis = getKpisByCategory('ecosystem');
     const hospitalityKpis = getKpisByCategory('hospitality');
@@ -307,7 +296,6 @@ const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdmi
                 </>
             )}
 
-            {/* Render the modal if showModal is true and a KPI is selected */}
             {showModal && selectedKpi && (
                 <UpdateKpiModal
                     kpi={selectedKpi}
@@ -319,4 +307,4 @@ const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdmi
     );
 };
 
-export default DashboardView; // Export DashboardView as default from this file
+export default DashboardView;

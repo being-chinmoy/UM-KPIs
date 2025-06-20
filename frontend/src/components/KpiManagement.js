@@ -1,4 +1,4 @@
-// src/components/KpiManagement.js
+// frontend/src/components/KpiManagement.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import KpiEditModal from './KpiEditModal';
@@ -19,11 +19,11 @@ const KpiManagement = () => {
     const [showKpiModal, setShowKpiModal] = useState(false);
     const [selectedKpi, setSelectedKpi] = useState(null);
 
-    const FUNCTION_APP_BASE_URL = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api';
-    const GET_KPIS_KEY = 'HocSIfiRILPpTW5-tKvmAEvQYWIyHXxAC2Yotdq_kvu8AzFuq95CUA=='; 
-    const UPDATE_KPI_SUBMISSION_KEY = 'pQwVgWX0fCwqTaep9CHe4XTt_jCNXO5Sg8EkCT5LV-qvAzFueG8NPg==';
-    // IMPORTANT: You will need the key for AssignKPIsToUser if that function is deployed
-    const ASSIGN_KPIS_TO_USER_KEY = 'YOUR_ASSIGN_KPIS_TO_USER_FUNCTION_KEY'; 
+    // Using environment variables for API URL and keys
+    const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
+    const GET_KPIS_KEY = process.env.REACT_APP_GET_KPIS_KEY; 
+    const UPDATE_KPI_SUBMISSION_KEY = process.env.REACT_APP_UPDATE_KPI_SUBMISSION_KEY;
+    const ASSIGN_KPIS_TO_USER_KEY = process.env.REACT_APP_ASSIGN_KPIS_TO_USER_KEY; // Placeholder 
 
 
     const fetchAllKpis = useCallback(async () => {
@@ -31,6 +31,13 @@ const KpiManagement = () => {
         setError(null);
         if (!userToken) {
             setError("Admin token not available. Cannot fetch KPIs.");
+            setLoading(false);
+            return;
+        }
+
+        // Basic check for missing environment variables
+        if (!FUNCTION_APP_BASE_URL || !GET_KPIS_KEY) {
+            setError("API URL or GetKPIs key is not configured in environment variables. Cannot fetch KPIs.");
             setLoading(false);
             return;
         }
@@ -67,7 +74,7 @@ const KpiManagement = () => {
         } finally {
             setLoading(false);
         }
-    }, [userToken]);
+    }, [userToken, FUNCTION_APP_BASE_URL, GET_KPIS_KEY]); // Added env vars to dependencies
 
     useEffect(() => {
         if (userToken) {
@@ -77,6 +84,12 @@ const KpiManagement = () => {
 
     const handleKpiSave = async (kpiData) => {
         try {
+            // Basic check for missing environment variables
+            if (!FUNCTION_APP_BASE_URL || !UPDATE_KPI_SUBMISSION_KEY) {
+                setError("API URL or UpdateKpiSubmission key is not configured in environment variables. Cannot save KPI.");
+                throw new Error("Missing environment variable for KPI submission.");
+            }
+
             // Reuse UpdateKpiSubmission for saving/updating master KPI definitions
             const updateKpiUrl = `${FUNCTION_APP_BASE_URL}/UpdateKpiSubmission?code=${UPDATE_KPI_SUBMISSION_KEY}`;
 

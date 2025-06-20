@@ -1,28 +1,30 @@
-// UpdateKpiSubmission/index.js
-// This function handles the submission of KPI updates from the frontend.
-// It verifies the Firebase ID token for authentication and then updates
-// or inserts KPI data into Azure Cosmos DB.
+// api/UpdateKpiSubmission/index.js
+// This function handles both submitting KPI values for Udyam Mitras
+// and updating master KPI definitions by admins.
 
 const { CosmosClient } = require('@azure/cosmos');
-const jwt = require('jsonwebtoken'); // Used for verifying Firebase ID tokens (JWTs)
-const jwkToPem = require('jwk-to-pem'); // Converts JSON Web Keys (JWK) to PEM format for JWT verification
+const jwt = require('jsonwebtoken');
+const jwkToPem = require('jwk-to-pem');
+const fetch = require('node-fetch'); // Required for fetching JWKS
 
-// Cache for Firebase public keys (JWKS - JSON Web Key Set).
-// In a production environment, these should be refreshed periodically.
+// Cosmos DB Client Setup (ensure CosmosDbConnection is set in Application Settings)
+const connectionString = process.env.CosmosDbConnection;
+const client = new CosmosClient(connectionString);
+const databaseId = "UdyamMitraDB"; // Your Cosmos DB database ID
+const assignedKpiContainerId = "AssignedKPIs"; // Container for user-submitted KPIs
+const masterKpiContainerId = "MasterKPIs"; // Container for master KPI definitions
+const assignedKpiContainer = client.database(databaseId).container(assignedKpiContainerId);
+const masterKpiContainer = client.database(databaseId).container(masterKpiContainerId);
+
+
+// Cache for Firebase public keys (JWKS) to avoid fetching on every request
 let firebasePublicKeys = null;
 const FIREBASE_JWKS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 
-/**
- * Fetches Firebase's public keys for JWT verification.
- * Caches them to avoid repeated API calls.
- * @param {object} context - The Azure Functions context object for logging.
- * @returns {Promise<object>} A promise that resolves to the Firebase public keys.
- */
 async function getFirebasePublicKeys(context) {
     if (firebasePublicKeys) {
         return firebasePublicKeys;
     }
-
     try {
         const response = await fetch(FIREBASE_JWKS_URL);
         if (!response.ok) {
@@ -37,182 +39,169 @@ async function getFirebasePublicKeys(context) {
     }
 }
 
-/**
- * Main entry point for the UpdateKpiSubmission HTTP trigger.
- * @param {object} context - The Azure Functions context object.
- * @param {object} req - The HTTP request object.
- */
+
 module.exports = async function (context, req) {
     context.log('HTTP trigger function processed a request for UpdateKpiSubmission.');
 
-    // Retrieve environment variables required for Cosmos DB and Firebase integration.
-    // These must be set as Application Settings in your Azure Function App.
-    const cosmosDbConnection = process.env.CosmosDbConnection;
-    const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
-    const databaseId = 'KpiDb'; // Ensure this matches your Cosmos DB database ID
-    const containerId = 'KPISubmissions'; // Ensure this matches your Cosmos DB container ID
-
-    // Validate essential environment variables are present.
-    if (!cosmosDbConnection || !firebaseProjectId) {
-        context.log.error("CosmosDbConnection or FIREBASE_PROJECT_ID environment variables not set.");
-        context.res = {
-            status: 500,
-            body: "Backend configuration missing. Cosmos DB or Firebase Project ID not set."
-        };
-        return;
-    }
-
-    // Parse Cosmos DB connection string components.
-    const endpoint = cosmosDbConnection.split('AccountEndpoint=')[1].split(';')[0];
-    const key = cosmosDbConnection.split('AccountKey=')[1].split(';')[0];
-
-    // Initialize Cosmos DB client.
-    const client = new CosmosClient({ endpoint, key });
-    const database = client.database(databaseId);
-    const container = database.container(containerId);
-
-    // --- Firebase ID Token Verification ---
-    // Check for Authorization header with Bearer token.
+    // --- Authentication and Authorization ---
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        context.res = {
-            status: 401,
-            body: "Authorization token required. Please log in."
-        };
+        context.res = { status: 401, body: "Authorization token required." };
         return;
     }
 
-    // Extract the ID token.
     const idToken = authHeader.split(' ')[1];
     let decodedToken;
     try {
-        // Fetch Firebase public keys and verify the ID token.
         const jwks = await getFirebasePublicKeys(context);
         decodedToken = await new Promise((resolve, reject) => {
             jwt.verify(idToken, (header, callback) => {
-                // Find the correct public key using the 'kid' (key ID) from the token header.
                 const kid = header.kid;
                 const jwk = Object.values(jwks).find(k => k.kid === kid);
                 if (!jwk) {
-                    context.log.error('JWK not found for kid:', kid);
-                    return callback(new Error('Firebase public key not found for token.'));
+                    return callback(new Error('Firebase public key not found for token KID.'));
                 }
-                const pem = jwkToPem(jwk); // Convert JWK to PEM format for verification.
-                callback(null, pem);
+                callback(null, jwkToPem(jwk));
             }, { algorithms: ['RS256'] }, (err, decoded) => {
-                if (err) {
-                    reject(err); // If verification fails, reject the promise.
-                } else {
-                    resolve(decoded); // If successful, resolve with the decoded token.
-                }
+                if (err) reject(err);
+                else resolve(decoded);
             });
         });
 
-        // Additional checks for token audience and issuer to ensure it's for your Firebase project.
-        if (decodedToken.aud !== firebaseProjectId) {
-            throw new Error(`Firebase token audience mismatch. Expected ${firebaseProjectId}, got ${decodedToken.aud}`);
-        }
-        if (decodedToken.iss !== `https://securetoken.google.com/${firebaseProjectId}`) {
-            throw new Error(`Firebase token issuer mismatch. Expected https://securetoken.google.com/${firebaseProjectId}, got ${decodedToken.iss}`);
+        const FIREBASE_PROJECT_ID_ENV = process.env.FIREBASE_PROJECT_ID;
+        if (decodedToken.aud !== FIREBASE_PROJECT_ID_ENV || decodedToken.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID_ENV}`) {
+            throw new Error('Firebase token audience or issuer mismatch.');
         }
 
-        const uid = decodedToken.uid;
-        const email = decodedToken.email;
-        context.log(`Token verified for user: ${email} (UID: ${uid})`);
+        context.log(`User ${decodedToken.email} (UID: ${decodedToken.uid}, Role: ${decodedToken.role || 'udyamMitra'}) is submitting/updating KPI.`);
 
     } catch (error) {
-        context.log.error('Firebase token verification failed:', error);
-        context.res = {
-            status: 403, // Forbidden status for invalid token.
-            body: `Invalid or expired authentication token: ${error.message}`
-        };
+        context.log.error('Token verification failed:', error);
+        context.res = { status: 403, body: `Invalid or expired token: ${error.message}` };
         return;
     }
-    // --- End Firebase ID Token Verification ---
+    // --- End Authentication and Authorization ---
 
-    // Extract data from the request body.
-    const { kpiId, submittedValue, udyamMitraId, submissionDate, submissionMonthYear } = req.body;
+    const { 
+        kpiId, 
+        submittedValue, 
+        udyamMitraId, 
+        submissionDate, 
+        submissionMonthYear,
+        // Optional fields for master KPI updates (from Admin Dashboard)
+        kpiName, 
+        description, 
+        monthlyTarget, 
+        reportingFormat, 
+        category 
+    } = req.body;
 
-    // Validate required fields in the request body.
-    if (!kpiId || submittedValue === undefined || !udyamMitraId || !submissionDate || !submissionMonthYear) {
-        context.res = {
-            status: 400, // Bad Request status.
-            body: "Please pass kpiId, submittedValue, udyamMitraId, submissionDate, and submissionMonthYear in the request body."
-        };
+    // Determine if this is a user submission (udyamMitraId present) or a master KPI update (no udyamMitraId)
+    const isUserSubmission = !!udyamMitraId;
+    const isAdminMasterUpdate = !udyamMitraId && decodedToken.role === 'admin';
+
+    if (!kpiId) {
+        context.res = { status: 400, body: "KPI ID is required." };
         return;
     }
 
     try {
-        let existingKpi;
-        try {
-            // Attempt to read the existing KPI document from Cosmos DB.
-            // We assume 'kpiId' is both the document ID and the partition key.
-            const { resource } = await container.item(kpiId, kpiId).read();
-            existingKpi = resource;
-        } catch (error) {
-            // If the item is not found (status 404), it's not an error for this logic; we'll create a new one.
-            if (error.code === 404) {
-                context.log(`KPI with ID ${kpiId} not found, preparing to create new document.`);
+        if (isUserSubmission) {
+            // Logic for Udyam Mitra submitting their KPI value
+            if (decodedToken.uid !== udyamMitraId) {
+                context.res = { status: 403, body: "Permission denied: You can only submit KPIs for yourself." };
+                return;
+            }
+            if (submittedValue === undefined || !submissionDate || !submissionMonthYear) {
+                context.res = { status: 400, body: "For user submission, submittedValue, submissionDate, and submissionMonthYear are required." };
+                return;
+            }
+
+            // Construct the unique ID for the assigned KPI document
+            const assignedKpiDocId = `${udyamMitraId}-${kpiId}-${submissionMonthYear}`;
+            
+            // Get the existing assigned KPI document
+            const { resource: existingAssignedKpi } = await assignedKpiContainer.item(assignedKpiDocId, udyamMitraId).read();
+
+            if (existingAssignedKpi) {
+                // Update existing assigned KPI
+                existingAssignedKpi.currentValue = submittedValue;
+                existingAssignedKpi.lastUpdated = new Date().toISOString();
+                // Ensure other fields from master KPI are preserved if not provided in submission
+                await assignedKpiContainer.items.upsert(existingAssignedKpi);
+                context.log(`Updated KPI ${kpiId} for user ${udyamMitraId} for ${submissionMonthYear} to value: ${submittedValue}`);
             } else {
-                throw error; // Re-throw other types of errors during read.
-            }
-        }
+                // This means an Udyam Mitra is submitting a KPI that hasn't been assigned yet.
+                // In a stricter system, you might want to prevent this.
+                // For now, let's create a new assigned KPI document, but warn.
+                context.log.warn(`User ${udyamMitraId} submitted KPI ${kpiId} which was not pre-assigned for ${submissionMonthYear}. Creating new assigned KPI document.`);
+                
+                // Fetch master KPI details to create a complete assigned KPI document
+                const { resource: masterKpi } = await masterKpiContainer.item(kpiId, kpiId).read();
+                if (!masterKpi) {
+                    context.res = { status: 404, body: `Master KPI with ID ${kpiId} not found. Cannot assign.` };
+                    return;
+                }
 
-        let kpiToSave;
-        if (existingKpi) {
-            // If the KPI document exists, update its current value and add to submission history.
-            existingKpi.currentValue = submittedValue;
-            if (!existingKpi.submissionHistory) {
-                existingKpi.submissionHistory = [];
-            }
-            existingKpi.submissionHistory.push({
-                udyamMitraId: udyamMitraId,
-                value: submittedValue,
-                date: submissionDate,
-                monthYear: submissionMonthYear,
-                submittedByUid: decodedToken.uid,
-                submittedByEmail: decodedToken.email,
-                submissionType: "update" // Mark as an update submission.
-            });
-            kpiToSave = existingKpi;
-        } else {
-            // If the KPI document does not exist, create a new one.
-            // Note: In a production system, you might want a more sophisticated way
-            // to get KPI metadata (name, target, description, category) for new KPIs,
-            // perhaps from a master data source. For this demo, placeholders are used.
-            kpiToSave = {
-                id: kpiId,
-                kpiName: `KPI for ${kpiId}`, // Placeholder, should be specific
-                monthlyTarget: null, // Placeholder, should be specific
-                description: `Description for ${kpiId}`, // Placeholder
-                reportingFormat: 'Digital Submission', // Placeholder
-                category: 'common', // Default category, might need to be dynamic
-                currentValue: submittedValue,
-                submissionHistory: [{
+                const newAssignedKpi = {
+                    id: assignedKpiDocId,
                     udyamMitraId: udyamMitraId,
-                    value: submittedValue,
-                    date: submissionDate,
-                    monthYear: submissionMonthYear,
-                    submittedByUid: decodedToken.uid,
-                    submittedByEmail: decodedToken.email,
-                    submissionType: "initial" // Mark as an initial submission.
-                }]
+                    kpiId: kpiId,
+                    kpiName: masterKpi.kpiName,
+                    description: masterKpi.description,
+                    monthlyTarget: masterKpi.monthlyTarget,
+                    reportingFormat: masterKpi.reportingFormat,
+                    category: masterKpi.category,
+                    currentValue: submittedValue,
+                    submissionDate: submissionDate,
+                    submissionMonthYear: submissionMonthYear,
+                    lastUpdated: new Date().toISOString()
+                };
+                await assignedKpiContainer.items.upsert(newAssignedKpi);
+            }
+
+            context.res = {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: "KPI submission recorded successfully." })
             };
+
+        } else if (isAdminMasterUpdate) {
+            // Logic for Admin updating master KPI definitions
+            if (!kpiName || !monthlyTarget || !category) {
+                context.res = { status: 400, body: "For master KPI update, kpiName, monthlyTarget, and category are required." };
+                return;
+            }
+
+            const masterKpiDoc = {
+                id: kpiId, // ID is the kpiId itself for master KPIs
+                kpiName,
+                description: description || '',
+                monthlyTarget,
+                reportingFormat: reportingFormat || '',
+                category,
+                lastUpdated: new Date().toISOString()
+            };
+            
+            // Use upsert to create or replace the master KPI document
+            // Assuming partition key is 'id' for MasterKPIs container
+            await masterKpiContainer.items.upsert(masterKpiDoc);
+            context.log(`Updated/Created master KPI: ${kpiId}`);
+
+            context.res = {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: "Master KPI updated successfully." })
+            };
+
+        } else {
+            // Invalid request type or insufficient permissions
+            context.res = { status: 403, body: "Invalid request or insufficient permissions to perform this action." };
+            return;
         }
-
-        // Use upsert to either replace an existing document or create a new one.
-        const { resource: upsertedItem } = await container.items.upsert(kpiToSave);
-
-        context.res = {
-            status: 200, // OK status for successful upsert.
-            body: { message: "KPI upserted successfully", updatedKpi: upsertedItem }
-        };
 
     } catch (error) {
-        context.log.error('Error in UpdateKpiSubmission function:', error);
-        context.res = {
-            status: 500, // Internal Server Error status.
-            body: `Error processing KPI update: ${error.message}`
-        };
+        context.log.error('Error in UpdateKpiSubmission:', error);
+        context.res = { status: 500, body: `Error processing KPI update: ${error.message}` };
     }
 };

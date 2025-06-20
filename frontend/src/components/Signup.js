@@ -1,118 +1,95 @@
-// src/components/Signup.js
+// frontend/src/components/Signup.js
 import React, { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebaseConfig'; // Adjust path as needed
-// We will later add logic to set custom claims for roles in a backend function
+import { auth } from '../firebaseConfig'; // Import auth from firebaseConfig
+import { createUserWithEmailAndPassword } from 'firebase/auth'; // Import createUserWithEmailAndPassword
 
 const Signup = ({ onSignupSuccess, onSwitchToLogin }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+    const handleSignup = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+        try {
+            await createUserWithEmailAndPassword(auth, email, password);
+            console.log("Signed up successfully!");
+            onSignupSuccess(); // Notify parent of successful signup
+        } catch (err) {
+            console.error("Signup error:", err);
+            let errorMessage = "Failed to sign up. Please try again.";
+            if (err.code === 'auth/email-already-in-use') {
+                errorMessage = "This email is already in use. Please log in or use a different email.";
+            } else if (err.code === 'auth/weak-password') {
+                errorMessage = "Password is too weak (min 6 characters).";
+            } else if (err.code === 'auth/invalid-email') {
+                errorMessage = "Invalid email address format.";
+            }
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      // console.log("Signed up successfully!");
-      // IMPORTANT: User roles (custom claims) will be set via an Azure Function
-      // after successful signup to maintain security. For now, users will have default access.
-      onSignupSuccess(); // Callback to parent to handle navigation
-    } catch (err) {
-      console.error("Signup error:", err);
-      let userMessage = "Failed to create an account.";
-      if (err.code === 'auth/email-already-in-use') {
-        userMessage = "Email already in use. Please try logging in or use a different email.";
-      } else if (err.code === 'auth/weak-password') {
-        userMessage = "Password should be at least 6 characters.";
-      } else if (err.code === 'auth/invalid-email') {
-        userMessage = "Please enter a valid email address.";
-      }
-      setError(userMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center text-blue-800 mb-6">Sign Up</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
-              Email
-            </label>
-            <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
-              id="email"
-              type="email"
-              placeholder="email@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-              Password
-            </label>
-            <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
-              id="password"
-              type="password"
-              placeholder="********"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">
-              Confirm Password
-            </label>
-            <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
-              id="confirmPassword"
-              type="password"
-              placeholder="********"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
-          </div>
-          {error && <p className="text-red-500 text-xs italic mb-4 text-center">{error}</p>}
-          <div className="flex items-center justify-between">
-            <button
-className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 disabled:opacity-50"
-type="submit"
-disabled={loading}
-               >
-{loading ? 'Signing Up...' : 'Sign Up'}
-</button>
-<button
-className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
-type="button"
-onClick={onSwitchToLogin}
-disabled={loading}
->
-Already have an account? Log In
-</button>
-</div>
-</form>
-</div>
-</div>
-);
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-100 to-blue-200 p-4">
+            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md transform transition-all duration-300 hover:scale-105">
+                <h2 className="text-3xl font-bold text-center text-purple-700 mb-6">Create Account</h2>
+                <form onSubmit={handleSignup} className="space-y-5">
+                    <div>
+                        <label htmlFor="email" className="block text-gray-700 text-sm font-semibold mb-2">
+                            Email
+                        </label>
+                        <input
+                            type="email"
+                            id="email"
+                            className="shadow-inner appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition duration-200"
+                            placeholder="your.email@example.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                            disabled={loading}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="password" className="block text-gray-700 text-sm font-semibold mb-2">
+                            Password
+                        </label>
+                        <input
+                            type="password"
+                            id="password"
+                            className="shadow-inner appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 mb-3 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition duration-200"
+                            placeholder="Minimum 6 characters"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            disabled={loading}
+                        />
+                    </div>
+                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                    <button
+                        type="submit"
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline transform transition-all duration-300 hover:scale-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={loading}
+                    >
+                        {loading ? 'Signing Up...' : 'Sign Up'}
+                    </button>
+                </form>
+                <p className="text-center text-gray-600 text-sm mt-6">
+                    Already have an account?{' '}
+                    <button
+                        onClick={onSwitchToLogin}
+                        className="text-purple-600 hover:text-purple-800 font-semibold focus:outline-none transition duration-200"
+                        disabled={loading}
+                    >
+                        Login
+                    </button>
+                </p>
+            </div>
+        </div>
+    );
 };
 
 export default Signup;

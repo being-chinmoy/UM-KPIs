@@ -1,4 +1,4 @@
-// src/components/AdminDashboard.js
+// frontend/src/components/AdminDashboard.js
 import React, { useState } from 'react';
 // Removed useAuth import as it's not directly used in this component. Child components will import it.
 import DashboardView from './DashboardView'; // Import the DashboardView component

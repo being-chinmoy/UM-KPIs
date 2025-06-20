@@ -1,63 +1,72 @@
-// src/components/KpiEditModal.js
+// frontend/src/components/KpiEditModal.js
 import React, { useState, useEffect } from 'react';
 
 const KpiEditModal = ({ kpi, onClose, onSave, kpiCategories }) => {
-    const [id, setId] = useState(kpi ? kpi.id : '');
-    const [kpiName, setKpiName] = useState(kpi ? kpi.kpiName : '');
-    const [description, setDescription] = useState(kpi ? kpi.description : '');
-    const [monthlyTarget, setMonthlyTarget] = useState(kpi && typeof kpi.monthlyTarget === 'number' ? kpi.monthlyTarget : '');
-    const [reportingFormat, setReportingFormat] = useState(kpi ? kpi.reportingFormat : '');
-    const [category, setCategory] = useState(kpi ? kpi.category : (kpiCategories[0] ? kpiCategories[0].value : 'common'));
+    const [formData, setFormData] = useState({
+        id: kpi?.id || '', // KPI ID, if editing, otherwise empty for new
+        kpiName: kpi?.kpiName || '',
+        description: kpi?.description || '',
+        monthlyTarget: kpi?.monthlyTarget || '',
+        reportingFormat: kpi?.reportingFormat || '',
+        category: kpi?.category || (kpiCategories.length > 0 ? kpiCategories[0].value : ''), // Default to first category
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [message, setMessage] = useState('');
 
-    const isNewKpi = !kpi;
-
     useEffect(() => {
-        // Reset state when kpi prop changes (e.g., when modal opens for a different KPI)
-        setId(kpi ? kpi.id : '');
-        setKpiName(kpi ? kpi.kpiName : '');
-        setDescription(kpi ? kpi.description : '');
-        setMonthlyTarget(kpi && typeof kpi.monthlyTarget === 'number' ? kpi.monthlyTarget : '');
-        setReportingFormat(kpi ? kpi.reportingFormat : '');
-        setCategory(kpi ? kpi.category : (kpiCategories[0] ? kpiCategories[0].value : 'common'));
+        // Reset form data when a different KPI is selected for editing, or when creating new
+        setFormData({
+            id: kpi?.id || '',
+            kpiName: kpi?.kpiName || '',
+            description: kpi?.description || '',
+            monthlyTarget: kpi?.monthlyTarget || '',
+            reportingFormat: kpi?.reportingFormat || '',
+            category: kpi?.category || (kpiCategories.length > 0 ? kpiCategories[0].value : ''),
+        });
         setError(null);
         setMessage('');
     }, [kpi, kpiCategories]);
 
-    const handleSubmit = async () => {
-        setLoading(true);
+    const handleChange = (e) => {
+        const { id, value } = e.target;
+        setFormData(prev => ({ ...prev, [id]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
         setError(null);
         setMessage('');
+        setLoading(true);
 
-        // Basic validation
-        if (!id || !kpiName || monthlyTarget === '' || !reportingFormat || !category) {
-            setError("All fields (ID, Name, Target, Reporting, Category) are required.");
+        if (!formData.id) {
+            setError("KPI ID is required.");
             setLoading(false);
             return;
         }
-        if (isNaN(Number(monthlyTarget)) || Number(monthlyTarget) < 0) {
-            setError("Monthly Target must be a non-negative number.");
+        if (!formData.kpiName) {
+            setError("KPI Name is required.");
             setLoading(false);
             return;
         }
+        if (!formData.category) {
+            setError("Category is required.");
+            setLoading(false);
+            return;
+        }
+
+        // Convert monthlyTarget to number if it's a number string
+        const finalMonthlyTarget = isNaN(Number(formData.monthlyTarget)) ? formData.monthlyTarget : Number(formData.monthlyTarget);
 
         try {
-            await onSave({
-                id,
-                kpiName,
-                description,
-                monthlyTarget: Number(monthlyTarget), // Ensure it's a number
-                reportingFormat,
-                category
-            });
+            await onSave({ ...formData, monthlyTarget: finalMonthlyTarget });
             setMessage('KPI saved successfully!');
             setTimeout(() => {
-                onClose(); // Close modal after a short delay
+                onClose(); // Close modal on success
             }, 1000);
-        } catch (e) {
-            setError(`Failed to save KPI: ${e.message}`);
+        } catch (err) {
+            console.error("Error saving KPI:", err);
+            setError(`Failed to save KPI: ${err.message}`);
         } finally {
             setLoading(false);
         }
@@ -65,64 +74,102 @@ const KpiEditModal = ({ kpi, onClose, onSave, kpiCategories }) => {
 
     return (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl overflow-y-auto max-h-[90vh]">
-                <h2 className="text-2xl font-bold text-blue-700 mb-6">{isNewKpi ? 'Add New KPI' : `Edit KPI: ${kpi.kpiName}`}</h2>
+            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg">
+                <h2 className="text-2xl font-bold text-blue-700 mb-6">
+                    {kpi ? 'Edit Master KPI' : 'Add New Master KPI'}
+                </h2>
                 {error && <p className="text-red-500 mb-4">{error}</p>}
                 {message && <p className="text-green-600 mb-4">{message}</p>}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label htmlFor="kpi-id" className="block text-gray-700 text-sm font-bold mb-2">
-                            KPI ID:
+                        <label htmlFor="id" className="block text-gray-700 text-sm font-bold mb-2">
+                            KPI ID (Unique)
                         </label>
                         <input
                             type="text"
-                            id="kpi-id"
-                            value={id}
-                            onChange={(e) => setId(e.target.value)}
-                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                            placeholder="Unique KPI Identifier (e.g., common15)"
-                            disabled={!isNewKpi || loading} // Disable ID field when editing existing KPI
+                            id="id"
+                            value={formData.id}
+                            onChange={handleChange}
+                            className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            placeholder="e.g., common15"
+                            required
+                            disabled={loading || !!kpi?.id} {/* Disable ID if editing existing KPI */}
                         />
-                        {isNewKpi && <p className="text-xs text-gray-500 mt-1">Cannot be changed after creation.</p>}
+                        {kpi && <p className="text-xs text-gray-500 mt-1">ID cannot be changed for existing KPIs.</p>}
                     </div>
+
                     <div>
-                        <label htmlFor="kpi-name" className="block text-gray-700 text-sm font-bold mb-2">
-                            KPI Name:
+                        <label htmlFor="kpiName" className="block text-gray-700 text-sm font-bold mb-2">
+                            KPI Name
                         </label>
                         <input
                             type="text"
-                            id="kpi-name"
-                            value={kpiName}
-                            onChange={(e) => setKpiName(e.target.value)}
-                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                            placeholder="e.g., New Enterprise Registrations"
+                            id="kpiName"
+                            value={formData.kpiName}
+                            onChange={handleChange}
+                            className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            placeholder="e.g., New Field Assessment"
+                            required
                             disabled={loading}
                         />
                     </div>
+
                     <div>
-                        <label htmlFor="monthly-target" className="block text-gray-700 text-sm font-bold mb-2">
-                            Monthly Target:
+                        <label htmlFor="description" className="block text-gray-700 text-sm font-bold mb-2">
+                            Description
+                        </label>
+                        <textarea
+                            id="description"
+                            value={formData.description}
+                            onChange={handleChange}
+                            className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline h-24 resize-none"
+                            placeholder="Detailed description of the KPI..."
+                            disabled={loading}
+                        ></textarea>
+                    </div>
+
+                    <div>
+                        <label htmlFor="monthlyTarget" className="block text-gray-700 text-sm font-bold mb-2">
+                            Monthly Target
                         </label>
                         <input
-                            type="number"
-                            id="monthly-target"
-                            value={monthlyTarget}
-                            onChange={(e) => setMonthlyTarget(e.target.value)}
-                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                            placeholder="e.g., 50"
+                            type="text" {/* Can be number or text (e.g., 'As per deployment') */}
+                            id="monthlyTarget"
+                            value={formData.monthlyTarget}
+                            onChange={handleChange}
+                            className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            placeholder="e.g., 10 or 'As per deployment'"
+                            required
                             disabled={loading}
                         />
                     </div>
+
+                    <div>
+                        <label htmlFor="reportingFormat" className="block text-gray-700 text-sm font-bold mb-2">
+                            Reporting Format
+                        </label>
+                        <input
+                            type="text"
+                            id="reportingFormat"
+                            value={formData.reportingFormat}
+                            onChange={handleChange}
+                            className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                            placeholder="e.g., Google Sheet with photos"
+                            disabled={loading}
+                        />
+                    </div>
+
                     <div>
                         <label htmlFor="category" className="block text-gray-700 text-sm font-bold mb-2">
-                            Category:
+                            Category
                         </label>
                         <select
                             id="category"
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
+                            value={formData.category}
+                            onChange={handleChange}
                             className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-white"
+                            required
                             disabled={loading}
                         >
                             {kpiCategories.map(cat => (
@@ -130,54 +177,25 @@ const KpiEditModal = ({ kpi, onClose, onSave, kpiCategories }) => {
                             ))}
                         </select>
                     </div>
-                </div>
 
-                <div className="mb-4">
-                    <label htmlFor="description" className="block text-gray-700 text-sm font-bold mb-2">
-                        Description:
-                    </label>
-                    <textarea
-                        id="description"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        placeholder="Detailed description of the KPI"
-                        rows="3"
-                        disabled={loading}
-                    ></textarea>
-                </div>
-
-                <div className="mb-6">
-                    <label htmlFor="reporting-format" className="block text-gray-700 text-sm font-bold mb-2">
-                        Reporting Format:
-                    </label>
-                    <input
-                        type="text"
-                        id="reporting-format"
-                        value={reportingFormat}
-                        onChange={(e) => setReportingFormat(e.target.value)}
-                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                        placeholder="e.g., Google Sheet, Field Report"
-                        disabled={loading}
-                    />
-                </div>
-
-                <div className="flex justify-end space-x-4">
-                    <button
-                        onClick={onClose}
-                        className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300"
-                        disabled={loading}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300"
-                        disabled={loading}
-                    >
-                        {loading ? 'Saving...' : 'Save KPI'}
-                    </button>
-                </div>
+                    <div className="flex justify-end space-x-4 mt-6">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300"
+                            disabled={loading}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300"
+                            disabled={loading}
+                        >
+                            {loading ? 'Saving...' : 'Save KPI'}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );

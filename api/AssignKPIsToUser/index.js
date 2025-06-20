@@ -1,46 +1,22 @@
-// AssignKPIsToUser/index.js
-// This function allows an authenticated admin user to assign specific KPIs
-// to a given Udyam Mitra (identified by their Firebase UID) for a period.
+// api/AssignKPIsToUser/index.js
+// This function allows an admin to assign master KPIs to a specific Udyam Mitra for a given month.
 
-const admin = require('firebase-admin'); // Firebase Admin SDK for user management
 const { CosmosClient } = require('@azure/cosmos');
 const jwt = require('jsonwebtoken');
 const jwkToPem = require('jwk-to-pem');
+const fetch = require('node-fetch'); // Required for fetching JWKS
 
-// Firebase Admin SDK initialization (same as in SetUserRole)
-let firebaseAdminInitialized = false;
-function initializeFirebaseAdmin(context) {
-    if (!firebaseAdminInitialized) {
-        const serviceAccountConfigBase64 = process.env.FIREBASE_ADMIN_SDK_CONFIG;
-        const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
+// Cosmos DB Client Setup (ensure CosmosDbConnection is set in Application Settings)
+const connectionString = process.env.CosmosDbConnection;
+const client = new CosmosClient(connectionString);
+const databaseId = "UdyamMitraDB"; // Your Cosmos DB database ID
+const assignedKpiContainerId = "AssignedKPIs"; // Container for assigned KPIs
+const masterKpiContainerId = "MasterKPIs"; // Container for master KPI definitions
+const assignedKpiContainer = client.database(databaseId).container(assignedKpiContainerId);
+const masterKpiContainer = client.database(databaseId).container(masterKpiContainerId);
 
-        if (!serviceAccountConfigBase64 || !firebaseProjectId) {
-            context.log.error("FIREBASE_ADMIN_SDK_CONFIG or FIREBASE_PROJECT_ID environment variables not set.");
-            throw new Error("Firebase Admin SDK config is missing.");
-        }
 
-        try {
-            const serviceAccountConfigJson = Buffer.from(serviceAccountConfigBase64, 'base64').toString('utf8');
-            const serviceAccount = JSON.parse(serviceAccountConfigJson);
-
-            if (serviceAccount.project_id && serviceAccount.project_id !== firebaseProjectId) {
-                context.log.error(`Service account project ID mismatch. Expected ${firebaseProjectId}, got ${serviceAccount.project_id}.`);
-                throw new Error("Firebase Admin SDK project ID in config does not match FIREBASE_PROJECT_ID env variable.");
-            }
-
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount)
-            });
-            firebaseAdminInitialized = true;
-            context.log("Firebase Admin SDK initialized successfully.");
-        } catch (error) {
-            context.log.error("Error initializing Firebase Admin SDK:", error);
-            throw new Error(`Failed to initialize Firebase Admin SDK: ${error.message}`);
-        }
-    }
-}
-
-// Cache for Firebase public keys (JWKS)
+// Cache for Firebase public keys (JWKS) to avoid fetching on every request
 let firebasePublicKeys = null;
 const FIREBASE_JWKS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 
@@ -62,19 +38,9 @@ async function getFirebasePublicKeys(context) {
     }
 }
 
+
 module.exports = async function (context, req) {
     context.log('HTTP trigger function processed a request for AssignKPIsToUser.');
-
-    // Initialize Firebase Admin SDK
-    try {
-        initializeFirebaseAdmin(context);
-    } catch (error) {
-        context.res = {
-            status: 500,
-            body: `Server configuration error: ${error.message}`
-        };
-        return;
-    }
 
     // --- Authentication and Authorization (Admin Only) ---
     const authHeader = req.headers.authorization;
@@ -91,7 +57,9 @@ module.exports = async function (context, req) {
             jwt.verify(idToken, (header, callback) => {
                 const kid = header.kid;
                 const jwk = Object.values(jwks).find(k => k.kid === kid);
-                if (!jwk) return callback(new Error('Firebase public key not found.'));
+                if (!jwk) {
+                    return callback(new Error('Firebase public key not found for token KID.'));
+                }
                 callback(null, jwkToPem(jwk));
             }, { algorithms: ['RS256'] }, (err, decoded) => {
                 if (err) reject(err);
@@ -104,12 +72,11 @@ module.exports = async function (context, req) {
             throw new Error('Firebase token audience or issuer mismatch.');
         }
 
-        // Check if the requesting user has 'admin' role
         if (decodedToken.role !== 'admin') {
             context.res = { status: 403, body: "Permission denied: Only admin users can assign KPIs." };
             return;
         }
-        context.log(`Admin user ${decodedToken.email} is assigning KPIs.`);
+        context.log(`Admin user ${decodedToken.email} (UID: ${decodedToken.uid}) is assigning KPIs.`);
 
     } catch (error) {
         context.log.error('Admin token verification failed:', error);
@@ -118,50 +85,62 @@ module.exports = async function (context, req) {
     }
     // --- End Authentication and Authorization ---
 
-    // Extract data from request body
-    const { udyamMitraUid, assignedKpiIds, monthYear } = req.body;
+    const { udyamMitraId, kpiIds, monthYear } = req.body; // Expect an array of kpiIds
 
-    if (!udyamMitraUid || !Array.isArray(assignedKpiIds) || assignedKpiIds.length === 0 || !monthYear) {
+    if (!udyamMitraId || !kpiIds || !Array.isArray(kpiIds) || kpiIds.length === 0 || !monthYear) {
         context.res = {
             status: 400,
-            body: "Please provide 'udyamMitraUid', 'assignedKpiIds' (non-empty array), and 'monthYear' in the request body."
+            body: "Please provide udyamMitraId, an array of kpiIds, and monthYear (YYYY-MM)."
         };
         return;
     }
-
-    const cosmosDbConnection = process.env.CosmosDbConnection;
-    const databaseId = 'KpiDb'; // Your actual database ID
-    const containerId = 'UserKpiAssignments'; // New container ID for assignments
-
-    if (!cosmosDbConnection) {
-        context.log.error("CosmosDbConnection environment variable not set.");
-        context.res = { status: 500, body: "Cosmos DB connection string is missing." };
-        return;
-    }
-
-    const client = new CosmosClient(cosmosDbConnection);
-    const database = client.database(databaseId);
-    const container = database.container(containerId);
-
-    // Document ID for assignment can be a combination of UID and monthYear
-    // This allows for different assignments per month for the same user
-    const assignmentDocId = `${udyamMitraUid}-${monthYear}`; 
 
     try {
-        const assignmentDoc = {
-            id: assignmentDocId,
-            udyamMitraUid: udyamMitraUid,
-            monthYear: monthYear,
-            assignedKpiIds: assignedKpiIds,
-            lastUpdated: new Date().toISOString()
+        // Fetch the master KPI definitions for the provided kpiIds
+        const querySpec = {
+            query: `SELECT * FROM c WHERE ARRAY_CONTAINS(@kpiIds, c.id)`,
+            parameters: [
+                { name: "@kpiIds", value: kpiIds }
+            ]
         };
+        const { resources: masterKpis } = await masterKpiContainer.items.query(querySpec).fetchAll();
 
-        // Use upsert to create or update the assignment for the user for that month
-        const { resource: upsertedItem } = await container.items.upsert(assignmentDoc);
+        if (masterKpis.length !== kpiIds.length) {
+            context.res = {
+                status: 404,
+                body: "One or more master KPIs not found."
+            };
+            return;
+        }
+
+        const operations = [];
+        for (const kpi of masterKpis) {
+            const assignedKpiId = `${udyamMitraId}-${kpi.id}-${monthYear}`; // Unique ID for assigned KPI
+            const assignedKpi = {
+                id: assignedKpiId,
+                udyamMitraId: udyamMitraId,
+                kpiId: kpi.id, // Reference to the master KPI ID
+                kpiName: kpi.kpiName,
+                description: kpi.description,
+                monthlyTarget: kpi.monthlyTarget,
+                reportingFormat: kpi.reportingFormat,
+                category: kpi.category,
+                currentValue: 0, // Initialize current value to 0 for new assignments
+                submissionMonthYear: monthYear,
+                lastUpdated: new Date().toISOString()
+            };
+
+            // Use upsert to create or replace the assigned KPI document
+            // Assuming partition key is 'udyamMitraId' for AssignedKPIs container
+            operations.push(assignedKpiContainer.items.upsert(assignedKpi));
+        }
+
+        await Promise.all(operations);
 
         context.res = {
             status: 200,
-            body: { message: `KPIs assigned to ${udyamMitraUid} for ${monthYear} successfully.`, assignment: upsertedItem }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: `KPIs successfully assigned to ${udyamMitraId} for ${monthYear}` })
         };
 
     } catch (error) {
