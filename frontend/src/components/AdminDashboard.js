@@ -1,6 +1,6 @@
 // src/components/AdminDashboard.js
 import React, { useState } from 'react'; // Removed useCallback as it's no longer used in this component
-import { useAuth } from '../AuthContext'; // Keeping useAuth import as it's conceptually used by child components
+// Removed useAuth import as it's not directly used in this component. Child components will import it.
 import DashboardView from './DashboardView'; // Import the new DashboardView component
 import UserManagement from './UserManagement'; // New component for user management
 import KpiManagement from './KpiManagement'; // New component for KPI management
