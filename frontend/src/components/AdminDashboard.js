@@ -1,15 +1,15 @@
 // src/components/AdminDashboard.js
-import React, { useState, useCallback } from 'react'; // Removed useEffect as it's not used
-import { useAuth } from '../AuthContext';
+import React, { useState } from 'react'; // Removed useCallback as it's no longer used in this component
+import { useAuth } from '../AuthContext'; // Keeping useAuth import as it's conceptually used by child components
 import DashboardView from './DashboardView'; // Import the new DashboardView component
 import UserManagement from './UserManagement'; // New component for user management
 import KpiManagement from './KpiManagement'; // New component for KPI management
 
 const AdminDashboard = () => {
-    // These values (currentUser, userToken) are only needed if directly used in AdminDashboard's JSX or logic.
-    // If they are only passed down to children, the children can use useAuth directly.
-    // They are no longer destructured here to avoid ESLint warnings as they are not used directly in this component.
-    const { } = useAuth(); 
+    // No direct destructuring from useAuth() here as currentUser, userToken are not directly used
+    // in AdminDashboard's logic or JSX. Child components will access useAuth directly if needed.
+    // This resolves the 'Unexpected empty object pattern' warning.
+    
     const [activeTab, setActiveTab] = useState('user-management'); // 'user-management', 'kpi-management', 'view-user-kpis'
     const [selectedUdyamMitra, setSelectedUdyamMitra] = useState(null); // User object from Firebase Auth
 
