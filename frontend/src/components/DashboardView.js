@@ -150,7 +150,7 @@ const CollapsibleKPISection = ({ title, kpis, onUpdateClick }) => {
 
 
 // Main Dashboard View Component for Udyam Mitras
-// This component is now responsible for fetching and displaying KPIs for a specific user.
+// Exported as default from this file
 const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdminView prop
     const { currentUser, userToken } = useAuth(); 
     const [kpis, setKpis] = useState([]);
@@ -276,7 +276,6 @@ const DashboardView = ({ targetUidForAdminView }) => { // Added targetUidForAdmi
     useEffect(() => {
         // Trigger fetchKpiData when component mounts or currentUser/userToken changes
         if (currentUser && userToken) {
-            // No need to pass effectiveUid here, it's captured by useCallback's closure
             fetchKpiData(); 
         }
     }, [fetchKpiData, currentUser, userToken]); 

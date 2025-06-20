@@ -1,11 +1,10 @@
 // src/App.js
-import React, { useState } from 'react'; // Removed useEffect, useCallback as UdyamMitraDashboardView is now external
+import React, { useState } from 'react';
 import { useAuth } from './AuthContext'; // Import useAuth hook
 import { auth } from './firebaseConfig'; // Import auth instance for logout
 import { signOut } from 'firebase/auth';
-// Removed UpdateKpiModal from here, it's used within DashboardView now
 import AdminDashboard from './components/AdminDashboard'; // Admin Dashboard component
-import DashboardView from './components/DashboardView'; // Import the renamed DashboardView
+import DashboardView from './components/DashboardView'; // Import the new DashboardView
 
 
 // Import components
