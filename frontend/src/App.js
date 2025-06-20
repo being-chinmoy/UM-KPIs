@@ -4,8 +4,7 @@ import { useAuth } from './AuthContext'; // Import useAuth hook
 import { auth } from './firebaseConfig'; // Import auth instance for logout
 import { signOut } from 'firebase/auth';
 import AdminDashboard from './components/AdminDashboard'; // Admin Dashboard component
-import DashboardView from './components/DashboardView'; // Import the new DashboardView
-
+import DashboardView from './components/DashboardView'; // Import the DashboardView
 
 // Import components
 import Login from './components/Login';

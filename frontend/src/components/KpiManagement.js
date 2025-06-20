@@ -1,9 +1,8 @@
 // src/components/KpiManagement.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import KpiEditModal from './KpiEditModal'; // New modal for adding/editing KPIs
+import KpiEditModal from './KpiEditModal';
 
-// Master list of KPI categories for dropdowns
 const kpiCategories = [
     { value: 'common', label: 'Common KPIs' },
     { value: 'ecosystem', label: 'Ecosystem and Enterprise Development' },
@@ -14,13 +13,18 @@ const kpiCategories = [
 
 const KpiManagement = () => {
     const { userToken } = useAuth();
-    const [kpis, setKpis] = useState([]); // This will be the master list of KPIs
+    const [kpis, setKpis] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showKpiModal, setShowKpiModal] = useState(false);
-    const [selectedKpi, setSelectedKpi] = useState(null); // For editing, null for new
+    const [selectedKpi, setSelectedKpi] = useState(null);
 
-    const API_BASE_URL = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api';
+    const FUNCTION_APP_BASE_URL = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api';
+    const GET_KPIS_KEY = 'HocSIfiRILPpTW5-tKvmAEvQYWIyHXxAC2Yotdq_kvu8AzFuq95CUA=='; 
+    const UPDATE_KPI_SUBMISSION_KEY = 'pQwVgWX0fCwqTaep9CHe4XTt_jCNXO5Sg8EkCT5LV-qvAzFueG8NPg==';
+    // IMPORTANT: You will need the key for AssignKPIsToUser if that function is deployed
+    const ASSIGN_KPIS_TO_USER_KEY = 'YOUR_ASSIGN_KPIS_TO_USER_FUNCTION_KEY'; 
+
 
     const fetchAllKpis = useCallback(async () => {
         setLoading(true);
@@ -32,27 +36,31 @@ const KpiManagement = () => {
         }
 
         try {
-            // Admin fetches all KPIs using GetKPIs with their admin token
-            const response = await fetch(`${API_BASE_URL}/GetKPIs`, {
-                method: 'POST', // GetKPIs now expects POST with requestedUid
+            // Admin fetches all KPIs using GetKPIs with their admin token and function key
+            const response = await fetch(`${FUNCTION_APP_BASE_URL}/GetKPIs?code=${GET_KPIS_KEY}`, {
+                method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${userToken}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    // For admin, we don't request a specific UID's KPIs here,
-                    // the backend will understand from the admin role token to fetch all.
-                    // Or you could explicitly pass an 'admin' flag if needed for backend logic.
+                    // No specific UID requested here; backend GetKPIs should understand admin role from token
+                    // and return all master KPIs if called by an admin.
                 })
             });
 
             if (!response.ok) {
                 const errorText = await response.text();
+                if (response.status === 401 || response.status === 403) {
+                    setError("Authorization error. You might not have admin permissions or your token expired. Please re-login.");
+                } else {
+                    setError(`Failed to fetch all KPIs: ${response.status} - ${errorText}`);
+                }
                 throw new Error(`Failed to fetch all KPIs: ${response.status} - ${errorText}`);
+            } else {
+                const data = await response.json();
+                setKpis(data);
             }
-
-            const data = await response.json();
-            setKpis(data);
         } catch (e) {
             console.error("Error fetching all KPIs for admin:", e);
             setError(`Error fetching all KPIs: ${e.message}`);
@@ -62,14 +70,15 @@ const KpiManagement = () => {
     }, [userToken]);
 
     useEffect(() => {
-        fetchAllKpis();
-    }, [fetchAllKpis]);
+        if (userToken) {
+            fetchAllKpis();
+        }
+    }, [fetchAllKpis, userToken]);
 
     const handleKpiSave = async (kpiData) => {
-        // This function will be called by KpiEditModal for both new and existing KPIs
-        // This will reuse your existing UpdateKpiSubmission function
         try {
-            const updateKpiUrl = `${API_BASE_URL}/UpdateKpiSubmission`;
+            // Reuse UpdateKpiSubmission for saving/updating master KPI definitions
+            const updateKpiUrl = `${FUNCTION_APP_BASE_URL}/UpdateKpiSubmission?code=${UPDATE_KPI_SUBMISSION_KEY}`;
 
             const response = await fetch(updateKpiUrl, {
                 method: 'POST',
@@ -84,11 +93,10 @@ const KpiManagement = () => {
                     monthlyTarget: kpiData.monthlyTarget,
                     reportingFormat: kpiData.reportingFormat,
                     category: kpiData.category,
-                    // For an admin "master" update, we don't necessarily update currentValue or submissionHistory
-                    // The backend UpdateKpiSubmission is flexible enough to handle this.
-                    // You might need to adjust UpdateKpiSubmission to differentiate admin metadata updates
-                    // from user value submissions if that separation is critical.
-                    // For now, it will update the master KPI document's fields.
+                    // When admin updates master KPI metadata, submittedValue and udyamMitraId might not be relevant.
+                    // Your UpdateKpiSubmission function should be robust enough to handle these optional fields
+                    // or have separate logic for 'master data' updates vs 'user submissions'.
+                    // For now, it will update the master KPI document's fields if it exists.
                 }),
             });
 
@@ -110,6 +118,10 @@ const KpiManagement = () => {
         }
     };
 
+
+    if (!userToken) {
+        return <div className="text-center text-lg mt-10 text-gray-500">Waiting for admin token...</div>;
+    }
 
     if (loading) return <div className="text-center text-lg mt-10">Loading KPIs...</div>;
     if (error) return <div className="text-center text-lg mt-10 text-red-500">{error}</div>;
@@ -165,7 +177,7 @@ const KpiManagement = () => {
 
             {showKpiModal && (
                 <KpiEditModal
-                    kpi={selectedKpi} // Will be null for new KPI
+                    kpi={selectedKpi}
                     onClose={() => setShowKpiModal(false)}
                     onSave={handleKpiSave}
                     kpiCategories={kpiCategories}

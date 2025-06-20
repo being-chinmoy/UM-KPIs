@@ -1,21 +1,13 @@
 // src/components/AdminDashboard.js
-import React, { useState } from 'react'; // Removed useCallback as it's no longer used in this component
+import React, { useState } from 'react';
 // Removed useAuth import as it's not directly used in this component. Child components will import it.
-import DashboardView from './DashboardView'; // Import the new DashboardView component
-import UserManagement from './UserManagement'; // New component for user management
-import KpiManagement from './KpiManagement'; // New component for KPI management
+import DashboardView from './DashboardView'; // Import the DashboardView component
+import UserManagement from './UserManagement'; // User Management component
+import KpiManagement from './KpiManagement'; // KPI Management component
 
 const AdminDashboard = () => {
-    // No direct destructuring from useAuth() here as currentUser, userToken are not directly used
-    // in AdminDashboard's logic or JSX. Child components will access useAuth directly if needed.
-    // This resolves the 'Unexpected empty object pattern' warning.
-    
     const [activeTab, setActiveTab] = useState('user-management'); // 'user-management', 'kpi-management', 'view-user-kpis'
     const [selectedUdyamMitra, setSelectedUdyamMitra] = useState(null); // User object from Firebase Auth
-
-    // The fetchKpiDataForAdminView was a placeholder and is no longer needed.
-    // DashboardView now handles its own fetching logic based on the targetUidForAdminView prop.
-    // This part of the code has been entirely removed from the component to resolve the 'never used' warning.
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
@@ -40,14 +32,30 @@ const AdminDashboard = () => {
 
             <main>
                 {activeTab === 'user-management' && !selectedUdyamMitra && (
-                    <UserManagement onSelectUdyamMitra={(user) => {
-                        setSelectedUdyamMitra(user);
-                        setActiveTab('view-user-kpis');
-                    }} />
+                    <>
+                        {/* WARNING: This section relies on the 'GetUsers' and 'SetUserRole' Azure Functions. */}
+                        {/* If these functions are not deployed in your 'kpifirestoredb-chinmoy-unique' Function App, */}
+                        {/* this UserManagement component will likely show errors or empty lists. */}
+                        <UserManagement onSelectUdyamMitra={(user) => {
+                            setSelectedUdyamMitra(user);
+                            setActiveTab('view-user-kpis');
+                        }} />
+                        <p className="text-red-500 text-center mt-4 text-sm">
+                            Note: User Management requires 'GetUsers' and 'SetUserRole' Azure Functions to be deployed.
+                        </p>
+                    </>
                 )}
 
                 {activeTab === 'kpi-management' && (
-                    <KpiManagement />
+                    <>
+                        {/* WARNING: This section's full functionality (e.g., assigning KPIs) */}
+                        {/* would ideally rely on an 'AssignKPIsToUser' Azure Function. */}
+                        {/* Currently, it will only use GetKPIs and UpdateKpiSubmission to manage master KPI definitions. */}
+                        <KpiManagement />
+                        <p className="text-orange-500 text-center mt-4 text-sm">
+                            Note: KPI Assignment features are limited without 'AssignKPIsToUser' Azure Function.
+                        </p>
+                    </>
                 )}
 
                 {activeTab === 'view-user-kpis' && selectedUdyamMitra && (

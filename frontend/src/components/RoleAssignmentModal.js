@@ -9,14 +9,16 @@ const RoleAssignmentModal = ({ user, onClose, onSuccess }) => {
     const [error, setError] = useState(null);
     const [message, setMessage] = useState('');
 
-    const API_BASE_URL = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api';
+    const FUNCTION_APP_BASE_URL = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api';
+    const SET_USER_ROLE_KEY = 'RYbyy5wbosL04Pf4DEavAqDGdG7q3qqWXpjgOtVKR69XAzFui2dBSw=='; 
 
     const handleSaveRole = async () => {
         setLoading(true);
         setError(null);
         setMessage('');
         try {
-            const response = await fetch(`${API_BASE_URL}/SetUserRole`, {
+            // Using the external Function App URL with key
+            const response = await fetch(`${FUNCTION_APP_BASE_URL}/SetUserRole?code=${SET_USER_ROLE_KEY}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -35,7 +37,7 @@ const RoleAssignmentModal = ({ user, onClose, onSuccess }) => {
 
             const result = await response.json();
             setMessage(result.message || 'User role updated successfully!');
-            onSuccess(); // Callback to refresh user list in parent
+            onSuccess();
         } catch (e) {
             console.error("Error setting user role:", e);
             setError(`Error: ${e.message}`);

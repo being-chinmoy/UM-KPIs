@@ -1,33 +1,34 @@
 // src/components/UserManagement.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../AuthContext'; // To get admin's token
-import RoleAssignmentModal from './RoleAssignmentModal'; // New component for role assignment
+import { useAuth } from '../AuthContext';
+import RoleAssignmentModal from './RoleAssignmentModal';
 
 const UserManagement = ({ onSelectUdyamMitra }) => {
-    const { userToken } = useAuth(); // Removed currentUser as it's not directly used in this component
+    const { userToken } = useAuth();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [selectedUserForRole, setSelectedUserForRole] = useState(null);
 
-    const API_BASE_URL = 'https://ambitious-wave-05ff35700.1.azurestaticapps.net/api';
+    const FUNCTION_APP_BASE_URL = 'https://kpifirestoredb-chinmoy-unique.azurewebsites.net/api';
+    // IMPORTANT: You need to get the function key for your GetUsers function if it exists.
+    // If GetUsers is not deployed, this will not work.
+    const GET_USERS_KEY = 'YOUR_GET_USERS_FUNCTION_KEY'; 
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         setError(null);
-        // Ensure userToken is available before proceeding with the fetch
         if (!userToken) {
-            // This case should be mostly handled by the useEffect dependency,
-            // but keeping a check here for robustness in case of timing issues.
             console.log("User token not available yet for fetching users. Waiting...");
-            setUsers([]); // Clear previous users if token becomes unavailable
+            setUsers([]);
             setLoading(false);
             return;
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/GetUsers`, {
+            // Using the external Function App URL with key
+            const response = await fetch(`${FUNCTION_APP_BASE_URL}/GetUsers?code=${GET_USERS_KEY}`, {
                 headers: {
                     'Authorization': `Bearer ${userToken}`,
                     'Content-Type': 'application/json'
@@ -36,12 +37,12 @@ const UserManagement = ({ onSelectUdyamMitra }) => {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                // Check for unauthorized/forbidden to provide a more specific error
                 if (response.status === 401 || response.status === 403) {
                     setError("Authorization error. You might not have admin permissions or your token expired. Please re-login.");
                 } else {
-                    throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
+                    setError(`Failed to fetch users: ${response.status} - ${errorText}. Make sure 'GetUsers' function is deployed.`);
                 }
+                throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
             } else {
                 const data = await response.json();
                 setUsers(data);
@@ -52,23 +53,20 @@ const UserManagement = ({ onSelectUdyamMitra }) => {
         } finally {
             setLoading(false);
         }
-    }, [userToken]); // useEffect will trigger this when userToken changes/becomes available
+    }, [userToken]);
 
     useEffect(() => {
-        // Only attempt to fetch users if a userToken is present
-        // This ensures the API call is made only when authentication is ready.
         if (userToken) {
             fetchUsers();
         }
-    }, [fetchUsers, userToken]); // Depend on fetchUsers and userToken
+    }, [fetchUsers, userToken]);
 
     const handleRoleUpdateSuccess = () => {
         setShowRoleModal(false);
         setSelectedUserForRole(null);
-        fetchUsers(); // Refresh user list after role update
+        fetchUsers();
     };
 
-    // Only show loading/error if there's no userToken, otherwise the table will be empty
     if (!userToken) {
         return <div className="text-center text-lg mt-10 text-gray-500">Waiting for admin token...</div>;
     }
@@ -94,7 +92,7 @@ const UserManagement = ({ onSelectUdyamMitra }) => {
                     <tbody>
                         {users.length === 0 ? (
                             <tr>
-                                <td colSpan="5" className="py-4 px-4 text-center text-gray-500">No users found or available for display.</td>
+                                <td colSpan="5" className="py-4 px-4 text-center text-gray-500">No users found or available for display. Check 'GetUsers' function deployment.</td>
                             </tr>
                         ) : (
                             users.map(user => (
