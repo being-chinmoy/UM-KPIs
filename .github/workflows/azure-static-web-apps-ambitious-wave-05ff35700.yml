@@ -3,56 +3,64 @@ name: Azure Static Web Apps CI/CD
 on:
   push:
     branches:
-      - main
+      - main # Adjust this if your main branch is named differently (e.g., master)
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
-      - main
+      - main # Adjust this if your main branch is named differently
 
 jobs:
   build_and_deploy_job:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
-    permissions:
-       id-token: write
-       contents: read
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
-          lfs: false
-      - name: Install OIDC Client from Core Package
-        run: npm install @actions/core@1.6.0 @actions/http-client
-      - name: Get Id Token
-        uses: actions/github-script@v6
-        id: idtoken
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
         with:
-           script: |
-               const coredemo = require('@actions/core')
-               return await coredemo.getIDToken()
-           result-encoding: string
-      - name: Build And Deploy
+          node-version: '20.x' # Or a specific LTS version like '18.x' or '20.x'
+
+      - name: Build Frontend Application
+        working-directory: frontend # Navigate to the frontend directory
+        run: |
+          npm install
+          npm run build
+
+      - name: Build and Install API Dependencies
+        working-directory: api # Navigate to the API directory
+        run: |
+          npm install # This will install all dependencies including devDependencies (for build if needed)
+          # npm install --production # Alternatively, use this to install only production dependencies if you don't have dev dependencies needed for API runtime
+
+      - name: Deploy Static Web App
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_AMBITIOUS_WAVE_05FF35700 }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)
           action: "upload"
-          ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
-          # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "./frontend" # App source code path
-          api_location: "/api" # Api source code path - optional
-          output_location: "build" # Built app content directory - optional
-          github_id_token: ${{ steps.idtoken.outputs.result }}
-          ###### End of Repository/Build Configurations ######
+          app_location: "/frontend/build" # Path to your React app's build output relative to repository root
+          api_location: "/api" # Path to your Azure Functions API code relative to repository root
+          output_location: "/" # Output location of your frontend build, relative to app_location
+          # You can specify the Node.js version for the API explicitly if needed
+          # app_build_command: "npm run build" # Only if your frontend build needs a specific command
+          # api_build_command: "npm install" # This ensures npm install runs for API before deployment packaging
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Close Pull Request
         id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_AMBITIOUS_WAVE_05FF35700 }}
           action: "close"
