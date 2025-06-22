@@ -23,7 +23,8 @@ const KpiManagement = () => {
     const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
     const GET_KPIS_KEY = process.env.REACT_APP_GET_KPIS_KEY; 
     const UPDATE_KPI_SUBMISSION_KEY = process.env.REACT_APP_UPDATE_KPI_SUBMISSION_KEY;
-    const ASSIGN_KPIS_TO_USER_KEY = process.env.REACT_APP_ASSIGN_KPIS_TO_USER_KEY; // Placeholder 
+
+    const ASSIGN_KPIS_TO_USER_KEY = process.env.REACT_APP_ASSIGN_KPIS_TO_USER_KEY; // Placeholder for future KPI assignment UI/logic
 
 
     const fetchAllKpis = useCallback(async () => {
@@ -47,8 +48,8 @@ const KpiManagement = () => {
             const response = await fetch(`${FUNCTION_APP_BASE_URL}/GetKPIs?code=${GET_KPIS_KEY}`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${userToken}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
                 },
                 body: JSON.stringify({
                     // No specific UID requested here; backend GetKPIs should understand admin role from token
