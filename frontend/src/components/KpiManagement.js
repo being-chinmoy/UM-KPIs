@@ -23,7 +23,7 @@ const KpiManagement = () => {
     const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
     const GET_KPIS_KEY = process.env.REACT_APP_GET_KPIS_KEY; 
     const UPDATE_KPI_SUBMISSION_KEY = process.env.REACT_APP_UPDATE_KPI_SUBMISSION_KEY;
-    c
+    
 
 
     const fetchAllKpis = useCallback(async () => {
