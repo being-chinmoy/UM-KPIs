@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth } from './firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
-import firebase from 'firebase/compat/app'; // For getting token manually if needed
+
 
 
 const AuthContext = createContext();
