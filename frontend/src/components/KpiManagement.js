@@ -1,4 +1,4 @@
-// frontend/src/components/KpiManagement.js
+// src/components/KpiManagement.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import KpiEditModal from './KpiEditModal';
@@ -23,7 +23,7 @@ const KpiManagement = () => {
     const FUNCTION_APP_BASE_URL = process.env.REACT_APP_FUNCTION_APP_BASE_URL;
     const GET_KPIS_KEY = process.env.REACT_APP_GET_KPIS_KEY; 
     const UPDATE_KPI_SUBMISSION_KEY = process.env.REACT_APP_UPDATE_KPI_SUBMISSION_KEY;
-
+    // eslint-disable-next-line no-unused-vars
     const ASSIGN_KPIS_TO_USER_KEY = process.env.REACT_APP_ASSIGN_KPIS_TO_USER_KEY; // Placeholder for future KPI assignment UI/logic
 
 
@@ -191,7 +191,7 @@ const KpiManagement = () => {
 
             {showKpiModal && (
                 <KpiEditModal
-                    kpi={selectedKpi}
+                    kpi={selectedKpi} // Will be null for new KPI
                     onClose={() => setShowKpiModal(false)}
                     onSave={handleKpiSave}
                     kpiCategories={kpiCategories}
